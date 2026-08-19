@@ -1643,7 +1643,14 @@ def _make_slurm_client():
             "-p priority",
             "--account=prio_skr2",
             "--job-name=synfac_worker",
-            "--time=8:00:00",
+            # Must outlast a whole slice. A slice is 25 samples at ~2/hr, so
+            # ~12h typical and longer through the heavy corner of the box --
+            # well past the old 8:00:00. When workers hit their walltime
+            # mid-slice, scale() does not get them back and every remaining
+            # sample in that slice dies "TimeoutError: No valid workers found"
+            # (21 samples lost this way on 2026-08-19; slices finishing under
+            # 8h were untouched, those running over it were not).
+            "--time=3-00:00:00",
             # logs/ not cwd: a weeks-long array is ~1000 worker jobs, and the
             # 2026-05 run left 24k mixed log files loose in this directory,
             # which was enough to defeat runstats.
