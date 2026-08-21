@@ -1678,6 +1678,21 @@ def _make_slurm_client():
     cluster.scale(N_WORKERS)
     client = Client(cluster, timeout="600s", heartbeat_interval="20s")
     print(f"Dask dashboard: {client.dashboard_link}", flush=True)
+    # Block until Slurm actually schedules a worker. Without this the driver
+    # starts submitting immediately and dask raises "No valid workers found"
+    # on an empty cluster, burning the first samples of the slice -- 5 lost
+    # across slices 73/74 on 2026-08-21, which started at 00:21 and 00:35 when
+    # the queue was slow. Distinct from the 8h-walltime bug: that one killed
+    # the TAIL of a slice, this one kills the HEAD and then self-heals.
+    #
+    # Failure here is not fatal on purpose. Timing out and letting the slice
+    # proceed reproduces today's behaviour (lose a few samples to the mop-up);
+    # raising would abort the driver and forfeit all 25.
+    try:
+        client.wait_for_workers(1, timeout="1800s")
+    except Exception as e:
+        print(f"WARN: no workers after 30 min ({type(e).__name__}: {e}); "
+              f"starting anyway", flush=True)
     return cluster, client
 
 
