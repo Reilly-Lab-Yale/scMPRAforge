@@ -1688,10 +1688,15 @@ def _make_slurm_client():
     # Failure here is not fatal on purpose. Timing out and letting the slice
     # proceed reproduces today's behaviour (lose a few samples to the mop-up);
     # raising would abort the driver and forfeit all 25.
+    # 2h, not 30 min. Measured worker queue waits on 2026-08-21 were seconds
+    # in the normal case but 21 min and 54 min in two starvation windows; the
+    # 54-min one blew through a 30-min timeout and cost slice 84 two samples.
+    # Waiting is nearly free -- a slice has 3 days of walltime for ~12h of
+    # work -- so the timeout should sit well past the observed tail.
     try:
-        client.wait_for_workers(1, timeout="1800s")
+        client.wait_for_workers(1, timeout="7200s")
     except Exception as e:
-        print(f"WARN: no workers after 30 min ({type(e).__name__}: {e}); "
+        print(f"WARN: no workers after 2 h ({type(e).__name__}: {e}); "
               f"starting anyway", flush=True)
     return cluster, client
 
