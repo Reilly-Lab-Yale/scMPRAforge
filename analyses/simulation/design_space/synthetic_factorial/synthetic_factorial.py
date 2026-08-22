@@ -1688,15 +1688,24 @@ def _make_slurm_client():
     # Failure here is not fatal on purpose. Timing out and letting the slice
     # proceed reproduces today's behaviour (lose a few samples to the mop-up);
     # raising would abort the driver and forfeit all 25.
-    # 2h, not 30 min. Measured worker queue waits on 2026-08-21 were seconds
-    # in the normal case but 21 min and 54 min in two starvation windows; the
-    # 54-min one blew through a 30-min timeout and cost slice 84 two samples.
-    # Waiting is nearly free -- a slice has 3 days of walltime for ~12h of
-    # work -- so the timeout should sit well past the observed tail.
+    # 6h, sized to stop chasing the tail rather than to match it. Observed
+    # worker queue waits: seconds normally, but 21 min, 54 min and 173 min in
+    # three post-midnight congestion windows -- each successively blowing
+    # through a timeout picked to cover the previous one (30 min, then 2h).
+    #
+    # The pending Reason is (Priority), not (Resources): the workers are
+    # queued behind other users' jobs, not blocked on our 128G ask, and our
+    # FairShare is 0.89. So the delay is other people's load and there is
+    # nothing to out-muscle -- the only sane response is to outwait it.
+    #
+    # A slice has 72h of walltime for ~12h of work, so even a 6h wait leaves
+    # ample margin, and waiting costs nothing next to failing samples. If
+    # workers genuinely never arrive we are no worse off than failing fast:
+    # the samples go to the mop-up pass either way.
     try:
-        client.wait_for_workers(1, timeout="7200s")
+        client.wait_for_workers(1, timeout="21600s")
     except Exception as e:
-        print(f"WARN: no workers after 2 h ({type(e).__name__}: {e}); "
+        print(f"WARN: no workers after 6 h ({type(e).__name__}: {e}); "
               f"starting anyway", flush=True)
     return cluster, client
 
