@@ -1,2 +1,4 @@
 *.out
 *.err
+monitor/*.log
+monitor/sweep_state.txt
