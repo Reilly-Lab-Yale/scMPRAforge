@@ -44,7 +44,31 @@ clears `Reason` to `None` once a job starts, so it is only readable live.
 
 ## 4. At the end: the mop-up pass
 
-Failed samples are not retried automatically. Once the array drains, resubmit
-it once -- it re-walks all 5000 and re-runs only what has no cache:
+Failed samples are not retried automatically. Once the array drains, re-run
+only the slices that actually contain uncached samples.
 
-    sbatch --array=0-199%10 wrap_union_slow.sh
+Do NOT blanket-resubmit `--array=0-199`. `_make_slurm_client()` runs before
+the per-sample skip check, so a slice with no work still stands up a dask
+cluster, submits N_WORKERS sbatches, and can sit in `wait_for_workers` for up
+to 6h. 200 slices x 5 workers is ~1000 sbatches churning fast enough to trip
+the YCRC 200/hr limit -- the same limit that cost 6 of 10 slices in 2026-05.
+
+Compute the slices that need work (slice = row index % n_slices):
+
+    python - <<'EOF'
+    import pandas as pd
+    from pathlib import Path
+    cache = Path('/nfs/roberts/project/pi_skr2/shared/tabula_data/simulated'
+                 '/synthetic_factorial_caches/union')
+    have = {p.stem for p in cache.glob('*.parquet')}
+    s = pd.read_parquet('output/samples_union.parquet').reset_index(drop=True)
+    miss = s[~s.sample_id.isin(have)]
+    print(','.join(map(str, sorted({i % 200 for i in miss.index}))))
+    EOF
+
+then submit just those:
+
+    sbatch --array=<that list>%10 wrap_union_slow.sh
+
+2026-08-26 run: 84 missing samples fell in only 16 slices
+(2,3,5,7,10,11,13,19,20,73,74,84,100,101,193,194).
