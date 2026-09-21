@@ -97,7 +97,10 @@ def main():
     missing = wanted - set(d.dataset)
     assert not missing, f"missing from results table: {sorted(missing)}"
 
-    fig, axes = plt.subplots(1, 2, figsize=(7.2, 4.2))
+    # Included at 0.88\textwidth (498.66pt), so the canvas is drawn 6.07in
+    # wide and the point sizes below mean what they say on the page. Drawing
+    # wider and letting LaTeX scale it down shrinks every label with it.
+    fig, axes = plt.subplots(1, 2, figsize=(6.07, 4.6))
 
     for ax, (direction, title) in zip(axes, PANELS):
         sub = d[d.direction == direction]
@@ -123,7 +126,8 @@ def main():
             # grey text per bar outweighed the mark that mattered.
             sig = stars(p, v.size)
             strong = sig not in ("ns", "n/a")
-            ax.text(i, (mean + np.sign(mean) * sem) * 1.9, sig, ha="center",
+            lift = 1.9 if i % 2 == 0 else 5.0
+            ax.text(i, (mean + np.sign(mean) * sem) * lift, sig, ha="center",
                     va="bottom" if mean > 0 else "top",
                     fontsize=13 if strong else 8.5,
                     fontweight="bold" if strong else "normal",
@@ -135,13 +139,20 @@ def main():
         # Canonical marked on the tick label, not above the bar, so it cannot
         # be confused with the significance marks.
         ax.set_xticklabels([f"{lab} *" if c else lab for _, lab, c in LAYOUT],
-                           fontsize=8, rotation=40, ha="right",
-                           rotation_mode="anchor")
+                           fontsize=7, rotation=90, ha="center",
+                           va="top")
         for tick, (_, _, c) in zip(ax.get_xticklabels(), LAYOUT):
             if c:
                 tick.set_color(INK)
                 tick.set_fontweight("bold")
         ax.set_title(title, fontsize=10, color=INK, pad=16)
+        # Short and unrotated outside the right spine: a rotated
+        # "ZINB preferred" needs more axis height than is available at any
+        # legible size, and on a symlog scale zero is not at the midpoint.
+        for lab, y, va in (("NB\npreferred", 0.995, "top"),
+                           ("ZINB\npreferred", 0.005, "bottom")):
+            ax.text(1.02, y, lab, transform=ax.transAxes, ha="left", va=va,
+                    fontsize=7, fontweight="bold", color=MUTED, linespacing=1.2)
         ax.grid(True, axis="y", color="#e6e6e6", lw=0.8, zorder=0)
         ax.set_axisbelow(True)
         for side in ("top", "right"):
@@ -153,7 +164,7 @@ def main():
         # One line now that the sample sizes are gone, so far less than the
         # two-line annotation needed.
         lo, hi = ax.get_ylim()
-        ax.set_ylim(lo * 3.5, hi * 2.2)
+        ax.set_ylim(lo * 9, hi * 4.5)
 
         # Which side means what, stated outright, so the panel can be read
         # without working back through the sign of an AIC difference. Placed
@@ -161,14 +172,6 @@ def main():
         # holds a bar, so an in-axes watermark would sit behind one. y=0 is
         # located in axes coordinates because on a symlog scale the zero line
         # is nowhere near the middle.
-        zero = ax.transAxes.inverted().transform(
-            ax.transData.transform((0, 0)))[1]
-        for label, frac in (("NB preferred", (zero + 1) / 2),
-                            ("ZINB preferred", zero / 2)):
-            ax.text(1.02, frac, label, transform=ax.transAxes,
-                    ha="center", va="center", rotation=270,
-                    fontsize=8.5, fontweight="bold", color=MUTED)
-
     axes[0].set_ylabel(r"mean $\Delta$AIC (ZINB $-$ NB)", fontsize=9.5, color=INK)
 
     handles = [
@@ -187,7 +190,7 @@ def main():
         print(f"{direction:13s}: canonical favouring NB on the mean: "
               f"{len(won)}/{len(canon)} {won}")
 
-    fig.tight_layout(rect=(0, 0.06, 1, 1))
+    fig.tight_layout(rect=(0, 0.07, 1, 1))
     OUT.mkdir(exist_ok=True)
     for ext in ("svg", "png"):
         fig.savefig(OUT / f"nb_vs_zinb_bars.{ext}", dpi=200, bbox_inches="tight")
