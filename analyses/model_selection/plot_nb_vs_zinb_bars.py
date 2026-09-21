@@ -116,15 +116,18 @@ def main():
             # Marks sit on the far side of the bar from zero. Scaling the bar
             # end outward works in both directions on a symlog axis because
             # multiplying a negative by >1 makes it more negative.
-            # Adjacent bars of near-equal height put these annotations at the
-            # same y, where "n=1344" and its neighbour collide into an
-            # unreadable run. Push every other one further out so the pair
-            # separates vertically instead.
-            lift = 1.7 if i % 2 == 0 else 2.8
-            ax.text(i, (mean + np.sign(mean) * sem) * lift,
-                    f"{stars(p, v.size)}\nn={v.size}", ha="center",
+            # Significance carries the weight here: solid-vs-hatched encodes
+            # canonicity, and at equal type weight that fill contrast read as
+            # the panel's primary distinction when significance is the point.
+            # The sample sizes were dropped with the same aim -- two lines of
+            # grey text per bar outweighed the mark that mattered.
+            sig = stars(p, v.size)
+            strong = sig not in ("ns", "n/a")
+            ax.text(i, (mean + np.sign(mean) * sem) * 1.9, sig, ha="center",
                     va="bottom" if mean > 0 else "top",
-                    fontsize=7, color=MUTED, linespacing=1.3)
+                    fontsize=13 if strong else 8.5,
+                    fontweight="bold" if strong else "normal",
+                    color=INK if strong else MUTED)
 
         ax.axhline(0, color=MUTED, lw=1.0, ls="--", zorder=2)
         ax.set_yscale("symlog", linthresh=1)
@@ -147,10 +150,10 @@ def main():
             ax.spines[side].set_color("#cccccc")
         ax.tick_params(colors=MUTED, labelsize=8, length=0)
         # Headroom for the significance marks, which sit outside the bar.
-        # Wider below: the downward marks are two lines hanging from the bar
-        # end, so they need more room than the upward ones.
+        # One line now that the sample sizes are gone, so far less than the
+        # two-line annotation needed.
         lo, hi = ax.get_ylim()
-        ax.set_ylim(lo * 12, hi * 3.2)
+        ax.set_ylim(lo * 3.5, hi * 2.2)
 
         # Which side means what, stated outright, so the panel can be read
         # without working back through the sign of an AIC difference. Placed
