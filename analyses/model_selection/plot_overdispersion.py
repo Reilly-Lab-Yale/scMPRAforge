@@ -50,7 +50,7 @@ def main():
     d = d.sort_values("phi")
     # Included at 0.70\textwidth (498.66pt), so the canvas is drawn 4.83in
     # wide and point sizes below mean what they say on the page.
-    fig, ax = plt.subplots(figsize=(4.83, 1.7))
+    fig, ax = plt.subplots(figsize=(4.83, 1.35))
 
     # Deterministic beeswarm: phi clusters between 15 and 20, and simply
     # alternating rows still collides there. Each point takes the row nearest
@@ -80,22 +80,16 @@ def main():
                edgecolor="white", linewidth=1.0)
 
     ax.set_yticks([])
-    ax.set_ylim(-0.95, 0.85)
+    ax.set_ylim(-0.95, 0.55)
     ax.set_xscale("log")
-    ax.set_xlim(0.6, float(d.phi.max()) * 1.75)
+    ax.set_xlim(0.6, float(d.phi.max()) * 1.25)
     ax.set_xlabel("Pearson dispersion $\\phi$ of the Poisson fit "
                   "(1 = Poisson)", fontsize=9, color=INK)
 
-    # Direct labels on the three values the text quotes, not on every point.
     med = float(d.phi.median())
-    for x, yi in ((float(d.phi.min()), y[0]), (float(d.phi.max()), y[-1])):
-        ax.annotate(f"{x:.1f}", xy=(x, yi), xytext=(x, 0.66), ha="center",
-                    fontsize=7.5, color=MUTED,
-                    arrowprops=dict(arrowstyle="-", color="#d9d9d9", lw=0.8,
-                                    shrinkA=2, shrinkB=5))
     # The median is a summary, not one of the dots, so it gets a rule rather
     # than a leader pointing into the gap between two points.
-    ax.vlines(med, -0.60, 0.60, color=MUTED, lw=0.9, ls=(0, (3, 2)), zorder=2)
+    ax.vlines(med, -0.55, 0.45, color=MUTED, lw=0.9, ls=(0, (3, 2)), zorder=2)
     ax.text(med, -0.66, f"median {med:.1f}", ha="center", va="top",
             fontsize=7.5, color=INK)
 
@@ -108,13 +102,11 @@ def main():
         ax.spines[side].set_visible(False)
     ax.spines["bottom"].set_color("#cccccc")
     ax.tick_params(colors=MUTED, labelsize=8, length=0)
-    ax.annotate(f"Poisson null\n(max $\\phi$ = {hi:.2f})",
-                xy=(hi, 0.30), xytext=(1.35, 0.68),
+    ax.annotate("Poisson null",
+                xy=(hi, 0.30), xytext=(1.35, 0.42),
                 fontsize=7.5, color=MUTED, va="center", ha="left",
                 arrowprops=dict(arrowstyle="-", color=MUTED, lw=0.8,
                                 shrinkA=0, shrinkB=2))
-    ax.text(float(d.phi.max()) * 1.18, 0.0, f"n = {len(d)}\ncell types",
-            va="center", ha="left", fontsize=7.5, color=MUTED)
 
     print(f"phi: {d.phi.min():.1f} to {d.phi.max():.1f} (median {d.phi.median():.1f})")
     print(f"null: mean {d.phi_null_mean.mean():.2f}, max {hi:.2f}")
