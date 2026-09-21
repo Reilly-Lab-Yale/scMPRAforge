@@ -95,7 +95,7 @@ PANEL_H = 1.02
 # the axis alone needs: the manuscript overlays a bold panel letter on the
 # top-left corner of each row via \panel{}, and the y-axis label is as long as
 # the panel is tall, so without the slack the letter lands on top of it.
-TOP_HEADERS, TOP_PLAIN = 0.46, 0.24
+TOP_HEADERS, TOP_PLAIN = 0.50, 0.24
 BOTTOM_XLABEL, BOTTOM_PLAIN = 0.44, 0.26
 
 LINEWIDTH_PT = 1.0
@@ -104,10 +104,10 @@ CURVE_ALPHA = 0.55
 plt.rcParams.update({
     **RC_BASE,
     "font.size": 7,
-    "axes.labelsize": 7.5,
-    "axes.titlesize": 7.5,
-    "xtick.labelsize": 6.5,
-    "ytick.labelsize": 6.5,
+    "axes.labelsize": 8,
+    "axes.titlesize": 9,
+    "xtick.labelsize": 7,
+    "ytick.labelsize": 7,
 })
 
 
@@ -243,13 +243,13 @@ def annotate_worst(ax, dataset, pvals, ks):
     d = ks[worst][0]
     ax.text(0.035, 0.97, f"max D = {d:.3f}\n{ct_label(dataset, worst)}",
             transform=ax.transAxes, ha="left", va="top",
-            fontsize=6, color=MUTED, linespacing=1.3)
+            fontsize=7, color=MUTED, linespacing=1.3)
 
 
 def not_applicable(ax):
     ax.text(0.5, 0.5, "not applicable\nno transfection reporter",
             transform=ax.transAxes, ha="center", va="center",
-            fontsize=6, color=MUTED, linespacing=1.5)
+            fontsize=7, color=MUTED, linespacing=1.5)
 
 
 def figure(dataset, panels, ks_tables, ylim, show_headers, show_xlabel):
@@ -310,7 +310,7 @@ def figure(dataset, panels, ks_tables, ylim, show_headers, show_xlabel):
         # so the two are not equal and fig.supxlabel would sit off-centre.
         fig.text((LEFT + 0.5 * (FIG_W - LEFT - RIGHT)) / FIG_W, 0.03 / fig_h,
                  "expected p-value (uniform quantile)",
-                 ha="center", va="bottom", fontsize=7.5, color=INK)
+                 ha="center", va="bottom", fontsize=8, color=INK)
 
     # Headers, and which way is bad, on the first row only: the rows stack into
     # one grid on a single y-scale, so repeating either beside three identical
@@ -319,13 +319,13 @@ def figure(dataset, panels, ks_tables, ylim, show_headers, show_xlabel):
         draw_headers(fig, fig_h, top)
         fig.text(0.008, bottom / fig_h + 0.5 * PANEL_H / fig_h,
                  "below zero: anti-conservative", rotation=90,
-                 ha="left", va="center", fontsize=6, color=MUTED)
+                 ha="left", va="center", fontsize=7, color=MUTED)
 
     # Dataset identity on the right, where nothing else lives; the rows carry
     # no titles, so this is what tells them apart once they are stacked.
     fig.text(1 - 0.10 / FIG_W, bottom / fig_h + 0.5 * PANEL_H / fig_h,
              DATASETS[dataset][0], rotation=-90,
-             ha="center", va="center", fontsize=7.5, color=INK)
+             ha="center", va="center", fontsize=9, color=INK)
 
     # One direct label on the band rather than a legend entry: it is furniture,
     # it appears in every panel, and the caption defines it. Drawn on the first
@@ -336,8 +336,8 @@ def figure(dataset, panels, ks_tables, ylim, show_headers, show_xlabel):
         # barely positive, so the space above the band on the right is empty.
         band_ax.annotate(
             "95% KS band", xy=(0.91, band_crit),
-            xytext=(0.44, 0.64), textcoords="axes fraction",
-            fontsize=6, color=MUTED, ha="left", va="bottom",
+            xytext=(0.44, 0.60), textcoords="axes fraction",
+            fontsize=7, color=MUTED, ha="left", va="bottom",
             arrowprops=dict(arrowstyle="-", lw=0.5, color=MUTED,
                             shrinkA=1.5, shrinkB=1.0),
         )
@@ -367,15 +367,15 @@ def draw_headers(fig, fig_h, top):
                               color=TEST_COLOR[test], lw=1.8,
                               solid_capstyle="round"))
         fig.text(cx(j), panel_top + 0.10 / fig_h, TEST_LABEL[test],
-                 ha="center", va="bottom", fontsize=7.5, color=INK)
+                 ha="center", va="bottom", fontsize=9, color=INK)
 
     for cond, j0, j1 in GROUPS:
         y_rule = panel_top + 0.25 / fig_h
         fig.add_artist(Line2D([edge(j0, "l"), edge(j1 - 1, "r")], [y_rule, y_rule],
                               color=HAIR, lw=0.7))
         fig.text(0.5 * (edge(j0, "l") + edge(j1 - 1, "r")),
-                 panel_top + 0.29 / fig_h, CONDITION_LABEL[cond],
-                 ha="center", va="bottom", fontsize=7.5, color=MUTED)
+                 panel_top + 0.31 / fig_h, CONDITION_LABEL[cond],
+                 ha="center", va="bottom", fontsize=9, color=MUTED)
 
 
 def build(datasets, ylim=None):
