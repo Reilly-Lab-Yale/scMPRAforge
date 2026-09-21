@@ -358,7 +358,7 @@ AXIS_DISPLAY_SHORT = {
     "bcs_per_cre": "barcodes\nper element",
     "moi": "MOI",
     "minP": "basal\nexpression",
-    "activity_max_mult": "dynamic range",
+    "activity_max_mult": "dynamic\nrange",
 }
 
 
@@ -1429,7 +1429,7 @@ ALL_LEFT_IN, ALL_RIGHT_IN = 0.56, 0.06
 # Top margin holds the power strip and its two-line label, nothing else --
 # but sized for the strip's rendered height, tick labels included, not for
 # where the strip itself is placed. See _assert_margin_clears_panels.
-ALL_TOP_IN, ALL_BOTTOM_IN = 0.44, 0.50
+ALL_TOP_IN, ALL_BOTTOM_IN = 0.60, 0.50
 # Panels butt up against one another without this and the triangle reads as
 # one continuous field rather than as a grid of separate surfaces.
 ALL_GAP_IN = 0.05
@@ -1437,7 +1437,8 @@ ALL_GAP_IN = 0.05
 # own caption is more than a page holds, and nothing about the cells needs to
 # be square -- their two axes are different quantities.
 ALL_ROW_FRAC = 0.84
-ALL_LABEL_PT = 6.5           # a 7.5 pt "basal expression" is taller than a row
+ALL_LABEL_PT, ALL_TICK_PT = 8, 7   # house convention; the long labels are wrapped
+                             # (AXIS_DISPLAY_SHORT) so they clear the row height
 
 
 def _pairwise_heatmaps_all(df, suffix: str):
@@ -1467,7 +1468,7 @@ def _pairwise_heatmaps_all(df, suffix: str):
             ax = fig.add_axes(rect)
             im, n_empty = _heat_panel(ax, df, AXIS_NAMES[j], AXIS_NAMES[i],
                                       xlabel=(i == n - 1), ylabel=(j == 0),
-                                      labelsize=ALL_LABEL_PT)
+                                      labelsize=ALL_LABEL_PT, ticksize=ALL_TICK_PT)
             empty += n_empty
             n_pairs += 1
             if i != n - 1:
@@ -1478,7 +1479,8 @@ def _pairwise_heatmaps_all(df, suffix: str):
         f"drew {n_pairs} panels for {n} axes, expected {n * (n - 1) // 2}")
 
     # See the note in _pairwise_heatmaps: caption's job, not the figure's.
-    _power_strip(fig, im, ALL_FIG_W, fig_h)
+    _power_strip(fig, im, ALL_FIG_W, fig_h, top_in=0.31,
+                 ticksize=ALL_TICK_PT, labelsize=ALL_LABEL_PT)
     _assert_labels_fit(fig, "Fig S8")
     out = OUT / f"pairwise_heatmaps_all{suffix}.svg"
     fig.savefig(out, format="svg")
@@ -1502,8 +1504,8 @@ PAIR_TOP_IN, PAIR_BOTTOM_IN = 0.52, 0.44
 # so this is set by the label's height at PAIR_TICK_PT, not by the strip.
 PAIR_STRIP_TOP_IN = 0.31
 # Manuscript type scale, in points as rendered on the page: 7 pt for tick
-# and annotation text, 8 pt for axis labels. Fig S8 keeps its own smaller
-# scale -- its rows are too short to carry an 8 pt label (see ALL_LABEL_PT).
+# and annotation text, 8 pt for axis labels. The all-pairs grid is on the same
+# scale; its long axis labels are wrapped to clear the row height.
 PAIR_LABEL_PT, PAIR_TICK_PT = 8, 7
 
 
