@@ -423,11 +423,14 @@ plt.rcParams.update({
     "pdf.fonttype": 42,
     "ps.fonttype": 42,
     "font.size": 7,
-    "axes.labelsize": 7.5,
-    "axes.titlesize": 7.5,
-    "xtick.labelsize": 6.5,
-    "ytick.labelsize": 6.5,
-    "legend.fontsize": 6.5,
+    # House convention, in points as rendered on the page: 7 for ticks,
+    # annotations and legends, 8 for axis labels, 9 for titles. The heatmap
+    # grids pass their sizes explicitly; these carry the marginals.
+    "axes.labelsize": 8,
+    "axes.titlesize": 9,
+    "xtick.labelsize": 7,
+    "ytick.labelsize": 7,
+    "legend.fontsize": 7,
     "axes.unicode_minus": False,  # the repo is plain ASCII
 })
 
@@ -1031,7 +1034,7 @@ def _draw_anchor_rules(ax, axis: str, anchors: list, data_lo: float,
                     transform=ax.get_xaxis_transform())
             ax.text(edge, 1.015, f"  {tag} off scale" if off_low
                     else f"{tag} off scale  ",
-                    fontsize=6, color=color, va="baseline",
+                    fontsize=7, color=color, va="baseline",
                     ha="left" if off_low else "right",
                     transform=ax.get_xaxis_transform())
             continue
@@ -1042,7 +1045,7 @@ def _draw_anchor_rules(ax, axis: str, anchors: list, data_lo: float,
                   for f, r in placed):
             row += 1
         ax.axvline(xv, color=color, linestyle=(0, (3, 2)), lw=0.8, zorder=3)
-        ax.text(xv, 1.015 + 0.085 * row, tag, fontsize=6, fontweight="bold",
+        ax.text(xv, 1.015 + 0.085 * row, tag, fontsize=7, fontweight="bold",
                 ha="center", va="baseline", color=color,
                 transform=ax.get_xaxis_transform())
         placed.append((frac, row))
@@ -1054,7 +1057,7 @@ def _draw_anchor_key(fig, rect, anchors: list):
     x = rect[0] + 0.01
     y = rect[1] + rect[3] - 0.02
     dy = 0.115 / MARG_FIG_H
-    fig.text(x, y, "published designs", fontsize=6.5, color=INK,
+    fig.text(x, y, "published designs", fontsize=7, color=INK,
              ha="left", va="top")
     for k, name in enumerate(anchors):
         color = EMPIRICAL_COLORS.get(name, INK)
@@ -1062,7 +1065,7 @@ def _draw_anchor_key(fig, rect, anchors: list):
         yk = y - (k + 1.35) * dy
         fig.add_artist(plt.Line2D([x, x + 0.10 / MARG_FIG_W], [yk] * 2,
                                   color=color, lw=0.8, ls=(0, (3, 2))))
-        fig.text(x + 0.13 / MARG_FIG_W, yk, f"{tag}   {full}", fontsize=6,
+        fig.text(x + 0.13 / MARG_FIG_W, yk, f"{tag}   {full}", fontsize=7,
                  color=MUTED, ha="left", va="center")
 
 
@@ -1192,13 +1195,13 @@ def _plot_marginals_for_metric(df: pd.DataFrame, metric: str, ylim: "tuple[float
     if captioned:
         fig.text(MARG_LEFT_IN / MARG_FIG_W, 1 - 0.115 / MARG_FIG_H,
                  title + ("  [linear x]" if force_linear_x else ""),
-                 ha="left", va="center", fontsize=7.5, color=INK)
+                 ha="left", va="center", fontsize=8, color=INK)
         if subtitle:
             fig.text(MARG_LEFT_IN / MARG_FIG_W, 1 - 0.255 / MARG_FIG_H,
-                     subtitle, ha="left", va="center", fontsize=6.5,
+                     subtitle, ha="left", va="center", fontsize=7,
                      color=MUTED)
     fig.text(0.075 / MARG_FIG_W, 0.5, ylabel, rotation=90, ha="left",
-             va="center", fontsize=7.5, color=INK)
+             va="center", fontsize=8, color=INK)
     _assert_labels_fit(fig, f"marginals/{metric}")
     # No bbox_inches="tight": the panel is placed at a fixed width on the page
     # and the margins above are what put its plot areas where they are.

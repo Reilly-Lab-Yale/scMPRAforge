@@ -81,15 +81,15 @@ def main():
         ax.set_yscale("symlog", linthresh=1)
         # Left-aligned over the axes rather than centred: the counts sit along
         # the top, and a centred title lands among them.
-        ax.set_title(title, fontsize=10, color=INK, pad=16, loc="left")
+        ax.set_title(title, fontsize=9, color=INK, pad=16, loc="left")
         ax.set_xlim(-0.6, len(LAYOUT) - 0.4)
         ax.set_xticks(range(len(LAYOUT)))
         ax.set_xticklabels([f"{lab} *" if c else lab for _, lab, c in LAYOUT],
-                           fontsize=8, rotation=40, ha="right",
+                           fontsize=7, rotation=40, ha="right",
                            rotation_mode="anchor")
         for tick, (_, _, c) in zip(ax.get_xticklabels(), LAYOUT):
             tick.set_color(INK if c else MUTED)
-        ax.tick_params(axis="y", labelsize=8, colors=MUTED, length=3)
+        ax.tick_params(axis="y", labelsize=7, colors=MUTED, length=3)
         ax.tick_params(axis="x", length=0)
         for side in ("top", "right"):
             ax.spines[side].set_visible(False)
@@ -102,7 +102,7 @@ def main():
         # rotated labels do not fit beside a panel this short without meeting
         # in the middle. Fig 1B, which is taller, still carries them.
 
-    fig.supylabel(r"$\Delta$AIC per fit (ZINB $-$ NB)", fontsize=9.5, color=INK,
+    fig.supylabel(r"$\Delta$AIC per fit (ZINB $-$ NB)", fontsize=8, color=INK,
                   x=0.005)
 
     fig.tight_layout()
