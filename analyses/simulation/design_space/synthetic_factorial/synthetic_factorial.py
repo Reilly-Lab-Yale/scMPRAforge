@@ -1335,7 +1335,8 @@ def _heat_grid(df, a, b, nb=8):
     return H, bins_a, bins_b, int(H.size - filled.sum())
 
 
-def _heat_panel(ax, df, a, b, nb=8, xlabel=True, ylabel=True, labelsize=None):
+def _heat_panel(ax, df, a, b, nb=8, xlabel=True, ylabel=True, labelsize=None,
+                ticksize=None):
     """One (a, b) power surface. Returns the image handle for a colourbar.
 
     Drawn in log10 units where the axis was drawn there, but the ladder is
@@ -1358,7 +1359,10 @@ def _heat_panel(ax, df, a, b, nb=8, xlabel=True, ylabel=True, labelsize=None):
             mpl_axis.set_major_locator(FixedLocator(decades))
             mpl_axis.set_major_formatter(
                 FixedFormatter([_fmt_decade(k) for k in decades]))
-    ax.tick_params(length=0, colors=INK, pad=2)
+    # labelsize=None is not a no-op -- it drops the tick text back to
+    # rcParams["font.size"] rather than leaving xtick/ytick.labelsize alone.
+    tick_kw = {} if ticksize is None else {"labelsize": ticksize}
+    ax.tick_params(length=0, colors=INK, pad=2, **tick_kw)
     # A label on a tick hard against either end of the axis would hang into
     # the neighbouring panel, so those two are aligned inwards. Only those
     # two: nudging a tick that sits well inside the axis pulls it towards its
@@ -1388,7 +1392,8 @@ STRIP_W_IN, STRIP_H_IN, STRIP_RIGHT_IN = 1.30, 0.05, 0.06
 STRIP_LABEL = "mean power,\nfold change 1-3x"
 
 
-def _power_strip(fig, im, fig_w, fig_h, top_in=0.26):
+def _power_strip(fig, im, fig_w, fig_h, top_in=0.26, ticksize=6,
+                 labelsize=6.5):
     """The 0-1 power scale as a slim horizontal strip in the top margin.
 
     One strip for the whole figure, at its top right. Every panel is on the
@@ -1405,9 +1410,9 @@ def _power_strip(fig, im, fig_w, fig_h, top_in=0.26):
     cbar.set_ticks([0.0, 0.5, 1.0])
     cbar.set_ticklabels(["0", "0.5", "1"])
     cbar.outline.set_visible(False)
-    cax.tick_params(length=0, labelsize=6, colors=MUTED, pad=1.5)
+    cax.tick_params(length=0, labelsize=ticksize, colors=MUTED, pad=1.5)
     label = fig.text(x0_in / fig_w, 1 - (top_in - 0.03) / fig_h, STRIP_LABEL,
-                     ha="left", va="bottom", fontsize=6.5, color=MUTED,
+                     ha="left", va="bottom", fontsize=labelsize, color=MUTED,
                      linespacing=1.35)
     _assert_text_fits(fig, [label], fig_w, "power strip label")
     _assert_margin_clears_panels(fig, cax, "power strip")
@@ -1488,11 +1493,18 @@ def _pairwise_heatmaps_all(df, suffix: str):
 # edge of the text block.
 PAIR_FIG_W = 6.90            # \textwidth of the text block
 PAIR_GUTTER_IN, PAIR_RIGHT_IN = 0.47, 0.06
-# The power strip is the only furniture up here, but it is taller than the
-# 0.31 in it is placed at: its tick labels are laid out by the renderer and
-# hang below it. _assert_margin_clears_panels measures the total and fails if
-# it reaches a panel, which is what set this number.
-PAIR_TOP_IN, PAIR_BOTTOM_IN = 0.44, 0.44
+# The power strip is the only furniture up here, but it reaches further down
+# than PAIR_STRIP_TOP_IN alone says: its tick labels are laid out by the
+# renderer and hang below it. _assert_margin_clears_panels measures the total
+# and fails if it reaches a panel, which is what set this number.
+PAIR_TOP_IN, PAIR_BOTTOM_IN = 0.52, 0.44
+# Where the strip sits below the top edge. Its two-line label goes above it,
+# so this is set by the label's height at PAIR_TICK_PT, not by the strip.
+PAIR_STRIP_TOP_IN = 0.31
+# Manuscript type scale, in points as rendered on the page: 7 pt for tick
+# and annotation text, 8 pt for axis labels. Fig S8 keeps its own smaller
+# scale -- its rows are too short to carry an 8 pt label (see ALL_LABEL_PT).
+PAIR_LABEL_PT, PAIR_TICK_PT = 8, 7
 
 
 def _pairwise_heatmaps(df, suffix: str, title_suffix: str = ""):
@@ -1527,13 +1539,15 @@ def _pairwise_heatmaps(df, suffix: str, title_suffix: str = ""):
         rect = [(PAIR_GUTTER_IN + k * (cell + PAIR_GUTTER_IN)) / PAIR_FIG_W,
                 PAIR_BOTTOM_IN / fig_h, cell / PAIR_FIG_W, cell / fig_h]
         ax = fig.add_axes(rect)
-        im, n_empty = _heat_panel(ax, df, a, b)
+        im, n_empty = _heat_panel(ax, df, a, b, labelsize=PAIR_LABEL_PT,
+                                  ticksize=PAIR_TICK_PT)
         empty += n_empty
 
     # No title or explanatory subtitle: this is a manuscript panel and the
-    # caption carries what it shows. The top margin stays as it is because the
-    # power strip lives in it.
-    _power_strip(fig, im, PAIR_FIG_W, fig_h)
+    # caption carries what it shows. The top margin is there for the power
+    # strip, which is the only thing in it.
+    _power_strip(fig, im, PAIR_FIG_W, fig_h, top_in=PAIR_STRIP_TOP_IN,
+                 ticksize=PAIR_TICK_PT, labelsize=PAIR_TICK_PT)
     _assert_labels_fit(fig, "Fig 5A")
     out_pair = OUT / f"pairwise_heatmaps{suffix}.svg"
     fig.savefig(out_pair, format="svg")
