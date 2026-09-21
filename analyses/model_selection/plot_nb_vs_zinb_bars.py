@@ -129,7 +129,7 @@ def main():
             lift = 1.9 if i % 2 == 0 else 5.0
             ax.text(i, (mean + np.sign(mean) * sem) * lift, sig, ha="center",
                     va="bottom" if mean > 0 else "top",
-                    fontsize=13 if strong else 8.5,
+                    fontsize=9 if strong else 7,
                     fontweight="bold" if strong else "normal",
                     color=INK if strong else MUTED)
 
@@ -145,7 +145,7 @@ def main():
             if c:
                 tick.set_color(INK)
                 tick.set_fontweight("bold")
-        ax.set_title(title, fontsize=10, color=INK, pad=16)
+        ax.set_title(title, fontsize=9, color=INK, pad=16)
         # Short and unrotated outside the right spine: a rotated
         # "ZINB preferred" needs more axis height than is available at any
         # legible size, and on a symlog scale zero is not at the midpoint.
@@ -159,7 +159,7 @@ def main():
             ax.spines[side].set_visible(False)
         for side in ("left", "bottom"):
             ax.spines[side].set_color("#cccccc")
-        ax.tick_params(colors=MUTED, labelsize=8, length=0)
+        ax.tick_params(colors=MUTED, labelsize=7, length=0)
         # Headroom for the significance marks, which sit outside the bar.
         # One line now that the sample sizes are gone, so far less than the
         # two-line annotation needed.
@@ -172,7 +172,7 @@ def main():
         # holds a bar, so an in-axes watermark would sit behind one. y=0 is
         # located in axes coordinates because on a symlog scale the zero line
         # is nowhere near the middle.
-    axes[0].set_ylabel(r"mean $\Delta$AIC (ZINB $-$ NB)", fontsize=9.5, color=INK)
+    axes[0].set_ylabel(r"mean $\Delta$AIC (ZINB $-$ NB)", fontsize=8, color=INK)
 
     handles = [
         plt.Rectangle((0, 0), 1, 1, facecolor=MUTED, edgecolor=MUTED,

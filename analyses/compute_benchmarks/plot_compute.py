@@ -165,7 +165,7 @@ MARKERS = {"nb": "o", "zinb": "^"}
 
 
 def plot_scatter(rows):
-    fig, axes = plt.subplots(1, 2, figsize=(8.5, 3.6))
+    fig, axes = plt.subplots(1, 2, figsize=(6.07, 2.6))
     specs = [
         ("peak_rss_gb", "Peak memory (GB)", axes[0]),
         ("total_fit_s", "Wall-clock fit time (min)", axes[1]),
@@ -259,7 +259,7 @@ def plot_canonical(rows):
         ax.bar(x, vals, color=BAR_COLOR, width=0.5, zorder=3)
         ax.set_xticks(list(x))
         ax.set_xticklabels(labels, fontsize=8, color=INK)
-        ax.set_ylabel(ylab, fontsize=8.5, color=INK)
+        ax.set_ylabel(ylab, fontsize=9, color=INK)
         finite = [v for v in vals if v == v]
         ax.set_ylim(0, (max(finite) if finite else 1.0) * 1.12)
         # Solid hairline grid, one shade off the surface; no value sits on a
@@ -271,14 +271,14 @@ def plot_canonical(rows):
         for side in ("left", "bottom"):
             ax.spines[side].set_color(HAIRLINE)
             ax.spines[side].set_linewidth(0.8)
-        ax.tick_params(labelsize=8, colors=MUTED, length=0)
+        ax.tick_params(labelsize=7, colors=MUTED, length=0)
         for lab in ax.get_xticklabels():
             lab.set_color(INK)
         # A gap is not a zero: say so where the bar would have been.
         for xi, v in zip(x, vals):
             if v != v:
                 ax.text(xi, ax.get_ylim()[1] * 0.03, "no log", ha="center",
-                        va="bottom", fontsize=7.5, style="italic", color=MUTED)
+                        va="bottom", fontsize=7, style="italic", color=MUTED)
     fig.tight_layout(pad=0.4)
     OUT.mkdir(exist_ok=True)
     for ext in ("svg", "png"):

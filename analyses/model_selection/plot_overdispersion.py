@@ -91,7 +91,7 @@ def main():
     # than a leader pointing into the gap between two points.
     ax.vlines(med, -0.55, 0.45, color=MUTED, lw=0.9, ls=(0, (3, 2)), zorder=2)
     ax.text(med, -0.66, f"median {med:.1f}", ha="center", va="top",
-            fontsize=7.5, color=INK)
+            fontsize=7, color=INK)
 
     ax.xaxis.set_major_formatter(
         matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:g}"))
@@ -101,10 +101,10 @@ def main():
     for side in ("top", "right", "left"):
         ax.spines[side].set_visible(False)
     ax.spines["bottom"].set_color("#cccccc")
-    ax.tick_params(colors=MUTED, labelsize=8, length=0)
+    ax.tick_params(colors=MUTED, labelsize=7, length=0)
     ax.annotate("Poisson null",
                 xy=(hi, 0.30), xytext=(1.35, 0.42),
-                fontsize=7.5, color=MUTED, va="center", ha="left",
+                fontsize=7, color=MUTED, va="center", ha="left",
                 arrowprops=dict(arrowstyle="-", color=MUTED, lw=0.8,
                                 shrinkA=0, shrinkB=2))
 
