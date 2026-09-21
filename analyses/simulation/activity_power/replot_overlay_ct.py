@@ -161,11 +161,11 @@ plt.rcParams.update({
     "pdf.fonttype": 42,
     "ps.fonttype": 42,
     "font.size": 7,
-    "axes.labelsize": 7.5,
-    "axes.titlesize": 7.5,
-    "xtick.labelsize": 6.5,
-    "ytick.labelsize": 6.5,
-    "legend.fontsize": 6.5,
+    "axes.labelsize": 8,
+    "axes.titlesize": 9,
+    "xtick.labelsize": 7,
+    "ytick.labelsize": 7,
+    "legend.fontsize": 7,
     "axes.unicode_minus": False,  # the repo is plain ASCII
 })
 
@@ -295,7 +295,7 @@ def draw_unsimulated(ax, curve):
     ax.axvspan(2.0 ** edge, 2.0 ** LOG2_WINDOW[1],
                color=HAIR, alpha=0.22, lw=0, zorder=0)
     ax.text(2.0 ** ((edge + LOG2_WINDOW[1]) / 2), 0.5, "not\nsimulated",
-            ha="center", va="center", fontsize=6, color=MUTED,
+            ha="center", va="center", fontsize=7, color=MUTED,
             linespacing=1.3, zorder=1)
     return 2.0 ** edge
 
@@ -325,7 +325,7 @@ def draw_annotations(ax, curve, dataset, condition, color):
         ax.annotate(
             display_ct(ct, dataset),
             xy=(fc, POWER_TARGET), xytext=(text_fc, text_power),
-            fontsize=6, color=INK, ha=ha, va="center",
+            fontsize=7, color=INK, ha=ha, va="center",
             arrowprops=dict(arrowstyle="-", color=MUTED, lw=0.5,
                             shrinkA=1.5, shrinkB=2.5),
             annotation_clip=False, zorder=6,
@@ -350,7 +350,7 @@ def draw_title(fig, dataset, condition, color, role=None):
     """
     x = LEFT_IN / FIG_W
     fig.text(x, 1 - 0.11 / FIG_H, DISPLAY_NAME[dataset],
-             ha="left", va="center", fontsize=7.5, color=INK)
+             ha="left", va="center", fontsize=9, color=INK)
     if role is not None:
         return
     fig.add_artist(Line2D(
@@ -359,7 +359,7 @@ def draw_title(fig, dataset, condition, color, role=None):
     ))
     fig.text(x + 0.115 / FIG_W, 1 - 0.245 / FIG_H,
              condition_label(dataset, condition),
-             ha="left", va="center", fontsize=6.5, color=MUTED)
+             ha="left", va="center", fontsize=7, color=MUTED)
 
 
 def plot_overlay(curve, dataset, condition, out_path):
@@ -383,6 +383,13 @@ def plot_overlay(curve, dataset, condition, out_path):
     ax.xaxis.set_major_locator(FixedLocator([0.5, 1, 2, 4]))
     ax.xaxis.set_major_formatter(FixedFormatter(["0.5x", "1x", "2x", "4x"]))
     ax.xaxis.set_minor_locator(NullLocator())
+    # The end labels sit over the axes limits, so centring them runs "0.5x"
+    # back under the y-tick ladder and "4x" past the right spine. Aligned to
+    # the inside, as in variant_power/panel_style.py.
+    end_labels = ax.get_xticklabels()
+    assert len(end_labels) == 4, f"expected 4 x ticks, got {len(end_labels)}"
+    end_labels[0].set_ha("left")
+    end_labels[-1].set_ha("right")
     ax.set_ylim(0, 1.02)
     ax.set_yticks([0, 0.5, 1.0], ["0", "0.5", "1"])
     style_axes(ax)
@@ -396,7 +403,7 @@ def plot_overlay(curve, dataset, condition, out_path):
         # one stretch of the rule that every curve has already climbed past.
         ax.annotate(f"{POWER_TARGET:.0%}", xy=(right_edge, POWER_TARGET),
                     xytext=(-2, -1), textcoords="offset points",
-                    fontsize=6, color=MUTED, ha="right", va="top")
+                    fontsize=7, color=MUTED, ha="right", va="top")
     else:
         ax.set_yticklabels([])
     if role in (None, "middle"):
