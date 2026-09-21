@@ -42,6 +42,15 @@ SIM_ROOT = pathlib.Path("/nfs/roberts/project/pi_skr2/shared/tabula_data_new/sim
 N_GT_DRAWS = 5
 HYPOTHESIS_SET = "hs_all_ct"
 
+# The panel is drawn at exactly the width Fig. 2 includes it at, so LaTeX
+# applies no scaling and the type sizes set here are the sizes on the page:
+# 7pt for tick labels, legend and annotation, 8pt for axis labels, 9pt for the
+# panel title. Margins are in inches, hence the explicit subplots_adjust --
+# a tight bbox would crop the canvas back off its target width.
+PANEL_W, PANEL_H = 3.04, 2.70
+MARGIN_L, MARGIN_R, MARGIN_T, MARGIN_B = 0.50, 0.08, 0.26, 0.42
+TICK_PT, LEGEND_PT, ANNOT_PT, AXIS_PT, TITLE_PT = 7, 7, 7, 8, 9
+
 # Legends carry the internal test identifiers; the manuscript uses these.
 TEST_LABEL = {"mwu": "MWU", "ttest": "t-test", "ks": "KS",
               "pseudobulk": "pseudobulk", "wald_auto": "Wald"}
@@ -143,7 +152,7 @@ def label_baseline(ax, kind, value):
         # Match the diagonal's on-screen slope; the axes is not square, so 45
         # degrees would visibly miss it.
         (x0, y0), (x1, y1) = ax.transData.transform([[0, 0], [1, 1]])
-        ax.text(0.63, 0.60, "chance", fontsize=8, color=grey,
+        ax.text(0.63, 0.60, "chance", fontsize=ANNOT_PT, color=grey,
                 rotation=np.degrees(np.arctan2(y1 - y0, x1 - x0)),
                 rotation_mode="anchor", ha="center", va="top")
     else:
@@ -151,7 +160,38 @@ def label_baseline(ax, kind, value):
         # takes the left.
         ax.annotate(f"baseline {value:.3f}", xy=(0.62, value),
                     xytext=(0, 3), textcoords="offset points",
-                    fontsize=8, color=grey, ha="center", va="bottom")
+                    fontsize=ANNOT_PT, color=grey, ha="center", va="bottom")
+
+
+def style_panel(fig, label, kind, slug=""):
+    """Size the canvas, restyle the type, recolour, and fix up the legend."""
+    fig.set_size_inches(PANEL_W, PANEL_H)
+    fig.set_layout_engine("none")
+    fig.subplots_adjust(left=MARGIN_L / PANEL_W, right=1 - MARGIN_R / PANEL_W,
+                        top=1 - MARGIN_T / PANEL_H, bottom=MARGIN_B / PANEL_H)
+    for ax in fig.axes:
+        # One title, naming the regime; the generic "ROC Curve" the plotting
+        # call sets is redundant beside it.
+        ax.set_title(f"{label}, {kind}", fontsize=TITLE_PT)
+        ax.xaxis.label.set_fontsize(AXIS_PT)
+        ax.yaxis.label.set_fontsize(AXIS_PT)
+        ax.tick_params(labelsize=TICK_PT)
+        recolor(ax)
+        if ax.get_legend() is None:
+            continue
+        handles, labels = ax.get_legend_handles_labels()
+        base = [BASELINE_LABEL.match(t) for t in labels]
+        assert sum(m is not None for m in base) == 1, (
+            f"{slug} {kind}: expected exactly one baseline entry in {labels}")
+        hit = next(m for m in base if m)
+        label_baseline(ax, kind, float(hit.group(2) or 0.0))
+
+        keep = [(h, relabel(t)) for h, t, m in zip(handles, labels, base)
+                if m is None]
+        assert keep, f"{slug} {kind}: every legend entry was dropped"
+        ax.legend(*zip(*keep), loc=LEGEND_LOC[kind], fontsize=LEGEND_PT,
+                  framealpha=0.95, borderpad=0.5, labelspacing=0.35,
+                  handlelength=1.4)
 
 
 def main():
@@ -169,30 +209,9 @@ def main():
             sim.median_performance_curve(
                 HYPOTHESIS_SET, kind, test_types=tests, include_alpha=True)
             fig = plt.gcf()
-            fig.set_size_inches(4.4, 3.6)
-            for ax in fig.axes:
-                # One title, naming the regime; the generic "ROC Curve" the
-                # plotting call sets is redundant beside it.
-                ax.set_title(f"{label}, {kind}", fontsize=10)
-                recolor(ax)
-                if ax.get_legend() is None:
-                    continue
-                handles, labels = ax.get_legend_handles_labels()
-                base = [BASELINE_LABEL.match(t) for t in labels]
-                assert sum(m is not None for m in base) == 1, (
-                    f"{slug} {kind}: expected exactly one baseline entry in "
-                    f"{labels}")
-                hit = next(m for m in base if m)
-                label_baseline(ax, kind, float(hit.group(2) or 0.0))
-
-                keep = [(h, relabel(t)) for h, t, m in zip(handles, labels, base)
-                        if m is None]
-                assert keep, f"{slug} {kind}: every legend entry was dropped"
-                ax.legend(*zip(*keep), loc=LEGEND_LOC[kind], fontsize=8,
-                          framealpha=0.95, borderpad=0.6, labelspacing=0.45,
-                          handlelength=1.6)
+            style_panel(fig, label, kind, slug)
             out = OUT / f"{slug}_median_{kind.lower()}.svg"
-            fig.savefig(out, format="svg", bbox_inches="tight")
+            fig.savefig(out, format="svg")
             plt.close(fig)
             print(f"    wrote {out.name}")
 
