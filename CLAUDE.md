@@ -146,3 +146,20 @@ construction).
   simulations, intermediate files. Do not use for new fits.
 - Simulations: `/nfs/roberts/project/pi_skr2/shared/tabula_data/simulated/`
   (will migrate to tabula_data_new when re-run)
+
+**On a laptop, `/nfs` is a cached partial copy, not the cluster mount.** Bouchet is
+the source of truth. Whatever has not been pulled down is simply absent, so any
+script that discovers its inputs by walking `/nfs` will quietly do less work
+rather than fail.
+
+This has already produced a wrong artifact once. `analyses/model_selection/
+cross_family_agreement.py:discover()` collects every ortho carrying both families'
+saved parameters and skips the rest with a bare `continue`. Run locally it
+regenerated the manuscript's Table S1 with **four rows missing** -- the Zhao coarse
+and consider-missing fits -- with no warning; it was caught by diffing the
+regenerated table against the committed one.
+
+So: regenerate anything that reads `/nfs` on Bouchet, not locally. If it must run
+locally, diff the output against what is committed before believing it, and prefer
+asserting the expected number of inputs over discovering whatever happens to be
+on disk.
