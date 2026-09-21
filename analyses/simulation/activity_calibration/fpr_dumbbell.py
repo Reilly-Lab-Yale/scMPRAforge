@@ -45,12 +45,14 @@ CONDITIONS = [("reporter", "reporter used"), ("deflated", "reporter withheld")]
 
 plt.rcParams.update({
     "svg.fonttype": "none",       # keep text editable downstream
-    "font.size": 9,
-    "axes.labelsize": 9,
-    "axes.titlesize": 9,
-    "xtick.labelsize": 8,
-    "ytick.labelsize": 8,
-    "legend.fontsize": 8,
+    # Point sizes as rendered on the page: the canvas is drawn at exactly the
+    # width it is included at, so LaTeX does not rescale the type.
+    "font.size": 8,
+    "axes.labelsize": 8,
+    "axes.titlesize": 8,
+    "xtick.labelsize": 7,
+    "ytick.labelsize": 7,
+    "legend.fontsize": 7,
     "axes.unicode_minus": False,  # the repo is plain ASCII
 })
 
@@ -144,7 +146,7 @@ def figure(dataset, table, xlim):
     # axis furniture is most of the cost, and the float overflows if this grows.
     top_in, bottom_in, pitch = 0.60, 0.46, 0.22
     height = top_in + bottom_in + pitch * len(cts)
-    fig, axes = plt.subplots(1, len(CONDITIONS), figsize=(6.5, height),
+    fig, axes = plt.subplots(1, len(CONDITIONS), figsize=(6.90, height),
                              squeeze=False)
     for i, (cond, lab) in enumerate(CONDITIONS):
         ax = axes[0][i]
@@ -158,13 +160,13 @@ def figure(dataset, table, xlim):
             # condition that did run spread across the whole panel.
             ax.text(0.5, 0.5, "not applicable\nno transfection reporter",
                     transform=ax.transAxes, ha="center", va="center",
-                    fontsize=8, color=MUTED, linespacing=1.5,
+                    fontsize=7, color=MUTED, linespacing=1.5,
                     bbox=dict(facecolor="white", edgecolor="none", pad=3))
 
     fig.subplots_adjust(left=0.25, right=0.995, wspace=0.07,
                         top=1 - top_in / height, bottom=bottom_in / height)
     fig.supxlabel(f"false-positive rate at p < {ALPHA:g}", y=0.012,
-                  fontsize=9, color=INK)
+                  fontsize=8, color=INK)
 
     drawn = next(ax for ax in axes[0] if ax.get_legend_handles_labels()[1])
     handles = {lb: h for lb, h in zip(*reversed(drawn.get_legend_handles_labels()))}
@@ -175,7 +177,7 @@ def figure(dataset, table, xlim):
     # Indented, not flush left: the manuscript overlays a bold panel letter in
     # the top-left corner via \panel{}, and a flush-left title lands under it.
     fig.suptitle(display, x=0.055, y=0.995, ha="left", va="top",
-                 fontsize=10, color=INK)
+                 fontsize=9, color=INK)
     return fig
 
 

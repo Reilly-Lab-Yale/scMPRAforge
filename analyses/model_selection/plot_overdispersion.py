@@ -2,12 +2,17 @@
 """Poisson is ruled out: observed dispersion vs its simulated null.
 
 Draws the result of overdispersion.py, which is the step that motivates an
-overdispersed count family at all. For each cell type the Pearson dispersion
-of a Poisson fit conditioning on CRE identity, phi = X2/(n-p), is plotted
-against the envelope of phi obtained by refitting data simulated from that
-same Poisson fit. Under Poisson phi is 1; the simulated null pins down how
-far it can stray by chance at these sample sizes and mean levels, where the
-asymptotic chi-square reference is not calibrated.
+overdispersed count family at all. For each cell type the Pearson dispersion of a Poisson fit conditioning on
+CRE identity, phi = X2/(n-p), is plotted against the envelope of phi obtained
+by refitting data simulated from that same Poisson fit. Under Poisson phi is
+1; the simulated null pins down how far it can stray by chance at these
+sample sizes and mean levels, where the asymptotic chi-square reference is
+not calibrated.
+
+Cell types are drawn as one strip rather than one labelled row each. Which
+cell type carries which phi is not the claim -- the claim is that every one
+of them lands decades away from the null -- and naming them invited the
+reader to compare identities the panel cannot speak to.
 
     python analyses/model_selection/plot_overdispersion.py
 """
@@ -43,9 +48,24 @@ def main():
     assert (d.aic_pois > d.aic_nb).all(), "Poisson beats NB by AIC somewhere"
 
     d = d.sort_values("phi")
-    y = np.arange(len(d))
+    # Included at 0.70\textwidth (498.66pt), so the canvas is drawn 4.83in
+    # wide and point sizes below mean what they say on the page.
+    fig, ax = plt.subplots(figsize=(4.83, 1.35))
 
-    fig, ax = plt.subplots(figsize=(6.2, 3.0))
+    # Deterministic beeswarm: phi clusters between 15 and 20, and simply
+    # alternating rows still collides there. Each point takes the row nearest
+    # the axis that no placed point already occupies within MIN_SEP (measured
+    # in log10 phi, the axis the eye actually reads).
+    MIN_SEP, ROWS = 0.035, (0.0, 0.21, -0.21, 0.42, -0.42)
+    placed, y = [], []
+    for xi in d.phi:
+        for row in ROWS:
+            if all(abs(np.log10(xi) - np.log10(xj)) >= MIN_SEP
+                   for xj, r in placed if r == row):
+                break
+        placed.append((xi, row))
+        y.append(row)
+    y = np.array(y)
 
     # Null envelope: the full spread of phi across all simulations, pooled
     # over cell types. It is narrow enough that per-cell-type bands would
@@ -53,36 +73,40 @@ def main():
     lo = float((d.phi_null_mean - 3 * d.phi_null_sd).min())
     hi = float(d.phi_null_max.max())
     ax.axvspan(lo, hi, color=MUTED, alpha=0.18, zorder=1)
-    ax.axvline(1.0, color=MUTED, lw=1.0, ls="--", zorder=2)
+    ax.axvline(1.0, color=MUTED, lw=1.0, zorder=2)
 
-    ax.hlines(y, hi, d.phi, color=BLUE, lw=1.2, alpha=0.55, zorder=3)
-    ax.scatter(d.phi, y, s=34, color=BLUE, zorder=4)
+    # 2px surface ring so dots stay separable where they overlap.
+    ax.scatter(d.phi, y, s=42, color=BLUE, zorder=4,
+               edgecolor="white", linewidth=1.0)
 
-    ax.set_yticks(y)
-    ax.set_yticklabels(d.cell_type, fontsize=8)
+    ax.set_yticks([])
+    ax.set_ylim(-0.95, 0.55)
     ax.set_xscale("log")
-    ax.set_xlim(0.6, float(d.phi.max()) * 1.9)
+    ax.set_xlim(0.6, float(d.phi.max()) * 1.25)
     ax.set_xlabel("Pearson dispersion $\\phi$ of the Poisson fit "
                   "(1 = Poisson)", fontsize=9, color=INK)
 
-    for n, yi, xi in zip(d.n, y, d.phi):
-        ax.text(xi * 1.12, yi, f"n={n:,}", va="center", fontsize=7, color=MUTED)
+    med = float(d.phi.median())
+    # The median is a summary, not one of the dots, so it gets a rule rather
+    # than a leader pointing into the gap between two points.
+    ax.vlines(med, -0.55, 0.45, color=MUTED, lw=0.9, ls=(0, (3, 2)), zorder=2)
+    ax.text(med, -0.66, f"median {med:.1f}", ha="center", va="top",
+            fontsize=7, color=INK)
 
+    ax.xaxis.set_major_formatter(
+        matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:g}"))
+    ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
     ax.grid(True, axis="x", color="#e6e6e6", lw=0.8, zorder=0)
     ax.set_axisbelow(True)
-    for side in ("top", "right"):
+    for side in ("top", "right", "left"):
         ax.spines[side].set_visible(False)
-    for side in ("left", "bottom"):
-        ax.spines[side].set_color("#cccccc")
-    ax.tick_params(colors=MUTED, labelsize=8, length=0)
-    # Annotated rather than put in a legend: with ten rows there is no corner
-    # of the axes free of data.
-    ax.annotate(f"Poisson null\n(max $\\phi$ = {hi:.2f})",
-                xy=(hi, y[-1]), xytext=(1.9, y[-1] + 0.55),
-                fontsize=7.5, color=MUTED, va="center",
+    ax.spines["bottom"].set_color("#cccccc")
+    ax.tick_params(colors=MUTED, labelsize=7, length=0)
+    ax.annotate("Poisson null",
+                xy=(hi, 0.30), xytext=(1.35, 0.42),
+                fontsize=7, color=MUTED, va="center", ha="left",
                 arrowprops=dict(arrowstyle="-", color=MUTED, lw=0.8,
                                 shrinkA=0, shrinkB=2))
-    ax.set_ylim(-0.8, len(d) - 0.1)
 
     print(f"phi: {d.phi.min():.1f} to {d.phi.max():.1f} (median {d.phi.median():.1f})")
     print(f"null: mean {d.phi_null_mean.mean():.2f}, max {hi:.2f}")
