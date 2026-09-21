@@ -107,21 +107,21 @@ def panel(ax, a, metric):
             del bp
 
     ax.set_xticks(range(len(TEST_ORDER)))
-    ax.set_xticklabels([TEST_LABEL[t] for t in TEST_ORDER], fontsize=8.5)
-    ax.set_ylabel(f"au{metric[2:].upper()}", fontsize=9, color=INK)
+    ax.set_xticklabels([TEST_LABEL[t] for t in TEST_ORDER], fontsize=7)
+    ax.set_ylabel(f"au{metric[2:].upper()}", fontsize=8, color=INK)
     ax.grid(True, axis="y", color="#e6e6e6", lw=0.8, zorder=0)
     ax.set_axisbelow(True)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     for side in ("left", "bottom"):
         ax.spines[side].set_color("#cccccc")
-    ax.tick_params(colors=MUTED, labelsize=8, length=0)
+    ax.tick_params(colors=MUTED, labelsize=7, length=0)
 
 
 def main():
     a = load()
 
-    fig, axes = plt.subplots(1, 2, figsize=(9.0, 3.4))
+    fig, axes = plt.subplots(1, 2, figsize=(6.55, 2.6))
     for ax, metric in zip(axes, ["auroc", "auprc"]):
         panel(ax, a, metric)
 
@@ -129,13 +129,13 @@ def main():
                for c in (BLUE, ORANGE, GREEN)]
     fig.legend(handles=handles,
                labels=[lab for _, lab in DATASETS],
-               loc="lower center", ncol=3, frameon=False, fontsize=8,
-               bbox_to_anchor=(0.5, -0.04))
+               loc="lower center", ncol=3, frameon=False, fontsize=7,
+               bbox_to_anchor=(0.5, 0.0))
 
-    fig.tight_layout(rect=(0, 0.06, 1, 1))
+    fig.tight_layout(rect=(0, 0.08, 1, 1))
     OUT.mkdir(parents=True, exist_ok=True)
     for ext in ("svg", "png"):
-        fig.savefig(OUT / f"test_comparison_box.{ext}", dpi=200, bbox_inches="tight")
+        fig.savefig(OUT / f"test_comparison_box.{ext}", dpi=200)
     plt.close(fig)
     print(f"wrote {OUT/'test_comparison_box.svg'} and .png")
 
