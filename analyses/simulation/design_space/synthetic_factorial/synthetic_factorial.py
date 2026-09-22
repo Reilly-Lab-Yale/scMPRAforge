@@ -1019,18 +1019,30 @@ def _aggregate(samples: pd.DataFrame, client, arm: str = PRIMARY_ARM) -> pd.Data
 _LOESS_CACHE: dict = {}
 
 
-def _loess_band(x, y, n_grid=100, frac=0.4, n_boot=200, seed=42):
+def _loess_band(x, y, n_grid=100, frac=0.4, n_boot=200, seed=42, it=0):
     """LOESS-like smoother via locally-weighted linear regression with
-    bootstrap 95% bands. Returns (xg, yhat, lo, hi)."""
+    bootstrap 95% bands. Returns (xg, yhat, lo, hi).
+
+    it=0 disables lowess's robustifying iterations, which default to 3. Those
+    iterations reweight points by a bisquare on their residual, scaled by a
+    SINGLE GLOBAL median |residual|. These curves are conditional means of
+    quantities whose spread changes several-fold along the axis, so that one
+    global scale is calibrated to the tight end and treats the honest spread
+    at the wide end as outliers. Because the wide end is also right-skewed,
+    the downweighting is one-sided and each iteration shaves the top of the
+    distribution: on the reporter-benefit curve it reported 0.137 where the
+    local mean is 0.313.
+    """
     from statsmodels.nonparametric.smoothers_lowess import lowess
     xg = np.linspace(np.min(x), np.max(x), n_grid)
-    yhat = lowess(y, x, frac=frac, xvals=xg, return_sorted=False)
+    yhat = lowess(y, x, frac=frac, it=it, xvals=xg, return_sorted=False)
     rng = np.random.default_rng(seed)
     boots = np.empty((n_boot, n_grid))
     for b in range(n_boot):
         idx = rng.integers(0, len(x), size=len(x))
         try:
-            boots[b] = lowess(y[idx], x[idx], frac=frac, xvals=xg, return_sorted=False)
+            boots[b] = lowess(y[idx], x[idx], frac=frac, it=it, xvals=xg,
+                              return_sorted=False)
         except Exception:
             boots[b] = np.nan
     lo = np.nanpercentile(boots, 2.5, axis=0)
@@ -1308,9 +1320,14 @@ METRIC_SPECS = [
      "_p3", "Power at 3x against each design axis"),
     ("power_auc_1to3", (0, 1), "mean power, fold change 1-3x", None, False,
      "_auc", "Mean power against each design axis"),
-    ("fc_at_p50",      None,   "fold change at 50% power", None, True,
-     "_fc50", "Minimum detectable fold change against each design axis"),
 ]
+
+# fc_at_p50 is computed per sample but deliberately not plotted. It is the
+# smallest FC at which smoothed power crosses 0.5, so it is undefined for any
+# design that never reaches 50% power and unbounded for those that only just
+# do. That makes it heavy-tailed and wildly heteroscedastic across the design
+# space -- a poor summary of a power surface, and the metric on which a
+# smoother's robustness weighting does the most damage. Use power_auc_1to3.
 
 # published: the three assays the manuscript reports on, which is the variant
 # its figures use. The takeshi variants predate Yin et al. being available as
@@ -1568,6 +1585,146 @@ def _pairwise_heatmaps_all(df, suffix: str):
     print(f"Saved: {out} ({ALL_FIG_W:.2f} x {fig_h:.2f} in, {n_pairs} pairs, "
           f"{empty} empty bins)", flush=True)
 
+
+# --- Fig: reporter contrast across the design space ------------------------
+# Geometry in inches at the size the page gives the figure. Two sub-panels per
+# axis, stacked and sharing x: power under both reporter conditions on top,
+# their difference below. Reading down a column answers "does the reporter's
+# benefit depend on this axis", which is the interaction the additive
+# decomposition assumes away.
+REP_FIG_W = 6.90
+REP_NCOL = 3
+REP_LEFT_IN, REP_RIGHT_IN = 0.52, 0.08
+REP_COLGAP_IN = 0.34
+REP_POW_H_IN = 0.92          # upper sub-panel: the two power curves
+REP_DEL_H_IN = 0.52          # lower sub-panel: their difference
+REP_SUBGAP_IN = 0.06         # between the pair; they share an x axis
+REP_HEADROOM_IN = 0.06
+REP_XFURN_IN = 0.40          # tick ladder and axis name under each pair
+REP_TOP_IN, REP_BOTTOM_IN = 0.10, 0.06
+REP_PLOT_W_IN = (REP_FIG_W - REP_LEFT_IN - REP_RIGHT_IN
+                 - (REP_NCOL - 1) * REP_COLGAP_IN) / REP_NCOL
+REP_PAIR_H_IN = REP_POW_H_IN + REP_SUBGAP_IN + REP_DEL_H_IN
+REP_ROW_IN = REP_HEADROOM_IN + REP_PAIR_H_IN + REP_XFURN_IN
+REP_NROW = int(np.ceil(len(AXIS_NAMES) / REP_NCOL))
+REP_FIG_H = REP_TOP_IN + REP_NROW * REP_ROW_IN + REP_BOTTOM_IN
+
+WITH_C, WITHOUT_C = "#0072b2", "#d55e00"     # Okabe-Ito; validated as a pair
+
+
+def _rep_rects(i: int):
+    """(power rect, delta rect) for the i-th axis, in figure fractions."""
+    r, c = divmod(i, REP_NCOL)
+    x = REP_LEFT_IN + c * (REP_PLOT_W_IN + REP_COLGAP_IN)
+    top = REP_TOP_IN + r * REP_ROW_IN + REP_HEADROOM_IN
+    pow_b = REP_FIG_H - top - REP_POW_H_IN
+    del_b = pow_b - REP_SUBGAP_IN - REP_DEL_H_IN
+    w = REP_PLOT_W_IN / REP_FIG_W
+    return ([x / REP_FIG_W, pow_b / REP_FIG_H, w, REP_POW_H_IN / REP_FIG_H],
+            [x / REP_FIG_W, del_b / REP_FIG_H, w, REP_DEL_H_IN / REP_FIG_H])
+
+
+def plot_reporter_marginals(arms_path: Path, out_path: Path,
+                            metric: str = "power_auc_1to3"):
+    """Power with and without a transfection reporter, across every axis.
+
+    The upper row of each pair is the design-space view an experimentalist
+    plans against; the lower row is the same data as a difference, where a
+    flat line means the reporter's benefit does not depend on that axis and a
+    sloped one means it does.
+    """
+    from matplotlib.ticker import NullLocator
+
+    d = pd.read_parquet(arms_path)
+    # One sample sits at the floor of the dynamic-range axis and produces no
+    # comparisons inside the FC window the metric averages over, so its power
+    # is undefined rather than zero. Dropping it keeps an invented zero out of
+    # the very region where that axis's curve is least constrained.
+    degenerate = sorted(d.loc[d[metric].isna(), "sample_id"].unique())
+    d = d[~d.sample_id.isin(degenerate)]
+    assert d[metric].notna().all(), "non-finite power survived the filter"
+
+    wide = d.pivot_table(index="sample_id", columns="arm", values=metric)
+    assert {"mwu", "mwu_deflated"} <= set(wide.columns), sorted(wide.columns)
+    base = d[d.arm == "mwu"].set_index("sample_id").loc[wide.index]
+    delta = (wide["mwu"] - wide["mwu_deflated"]).values
+
+    fig = plt.figure(figsize=(REP_FIG_W, REP_FIG_H))
+    # AXIS_BOUNDS is the pilot box; this sweep is drawn from UNION_AXIS_BOUNDS,
+    # whose dynamic-range axis runs to 120 rather than 8. Take the log flag
+    # from the sweep's own bounds and the limits from the data, as the other
+    # marginals do, so no panel is silently clipped to a narrower box.
+    for i, axis in enumerate(AXIS_NAMES):
+        log_scale = UNION_AXIS_BOUNDS[axis][2]
+        x = base[axis].values.astype(float)
+        lo, hi = float(x.min()), float(x.max())
+        if log_scale:
+            pad = 10 ** (0.03 * (np.log10(hi) - np.log10(lo)))
+            lo, hi = lo / pad, hi * pad
+        else:
+            pad = 0.03 * (hi - lo)
+            lo, hi = lo - pad, hi + pad
+        xs = np.log10(x) if log_scale else x
+        pr, dr = _rep_rects(i)
+        ax_p, ax_d = fig.add_axes(pr), fig.add_axes(dr)
+
+        for arm, colour in (("mwu", WITH_C), ("mwu_deflated", WITHOUT_C)):
+            y = wide[arm].values
+            gx, yhat, _, _ = _loess_band(xs, y, n_boot=20)
+            ax_p.plot(10 ** gx if log_scale else gx, yhat, color=colour, lw=1.6,
+                      zorder=4, solid_capstyle="round")
+
+        gx, dhat, dlo, dhi = _loess_band(xs, delta, n_boot=60)
+        gxp = 10 ** gx if log_scale else gx
+        ax_d.fill_between(gxp, dlo, dhi, color=INK, alpha=0.13, lw=0, zorder=3)
+        ax_d.plot(gxp, dhat, color=INK, lw=1.4, zorder=4)
+        ax_d.axhline(0, color=MUTED, lw=0.7, ls=(0, (3, 2)), zorder=2)
+
+        for ax in (ax_p, ax_d):
+            if log_scale:
+                ax.set_xscale("log")
+                ax.xaxis.set_minor_locator(NullLocator())
+            ax.set_xlim(lo, hi)
+            _style_marg_axes(ax, show_yticks=(i % REP_NCOL == 0))
+        ax_p.set_ylim(0, 1)
+        ax_d.set_ylim(-0.02, 0.42)
+        ax_p.tick_params(labelbottom=False)
+        ax_p.tick_params(labelsize=7)
+        ax_d.tick_params(labelsize=7)
+        ax_d.set_xlabel(axis_label(axis), fontsize=8, color=INK, labelpad=2)
+        if i % REP_NCOL == 0:
+            # Once per row, not once per figure: three rows cannot share one
+            # rotated label without it pointing at the wrong panel.
+            ax_p.set_ylabel("power", fontsize=8, color=INK, labelpad=2)
+            ax_d.set_ylabel("benefit", fontsize=8, color=INK, labelpad=2)
+        else:
+            ax_p.tick_params(labelleft=False)
+            ax_d.tick_params(labelleft=False)
+
+    # The key goes in the cell the seventh axis leaves empty.
+    kr, _ = _rep_rects(len(AXIS_NAMES))
+    kx, ky = kr[0], kr[1] + kr[3]
+    fig.text(kx, ky - 0.02, "power", fontsize=8, color=INK, fontweight="bold",
+             va="top")
+    for k, (lab, colour) in enumerate((("with reporter", WITH_C),
+                                       ("without reporter", WITHOUT_C))):
+        yk = ky - 0.075 - k * 0.055
+        fig.add_artist(plt.Line2D([kx, kx + 0.035], [yk, yk], color=colour,
+                                  lw=1.6, transform=fig.transFigure))
+        fig.text(kx + 0.045, yk, lab, fontsize=7, color=INK, va="center")
+    fig.text(kx, ky - 0.185, "difference", fontsize=8, color=INK,
+             fontweight="bold", va="top")
+    fig.text(kx, ky - 0.235,
+             "flat: the reporter's benefit does\nnot depend on that axis",
+             fontsize=7, color=MUTED, va="top", linespacing=1.35)
+
+
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, format="svg")
+    plt.close(fig)
+    print(f"Saved: {out_path} ({REP_FIG_W:.2f} x {REP_FIG_H:.2f} in, "
+          f"{len(wide)} samples, dropped {degenerate})", flush=True)
 
 # --- Fig 5A geometry, in inches at the size the page gives the panel --------
 # Three pairs in one row. Each panel carries its own pair of axes, so each
