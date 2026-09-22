@@ -462,6 +462,9 @@ ANCHOR_DISPLAY = {
 INK, MUTED, HAIR = "#1a1a1a", "#666666", "#c9c9c9"
 # Scatter is background texture behind the smoother, not a series.
 DOT = "#c2c2c2"
+# The two transfection-reporter conditions. Okabe-Ito blue and vermillion;
+# validated as a categorical pair against a white page.
+WITH_C, WITHOUT_C = "#0072b2", "#d55e00"
 
 # Power is a magnitude on a fixed 0-1 scale, so the ramp is sequential and
 # single-hue. YlOrRd is what the Fig 3B power heatmaps already use for the
@@ -1151,11 +1154,20 @@ def _draw_anchor_rules(ax, axis: str, anchors: list, data_lo: float,
     return placed
 
 
-def _draw_anchor_key(fig, rect, anchors: list):
+def _draw_anchor_key(fig, rect, anchors: list, show_arms: bool = False):
     """Name the dashed rules, in the grid slot the seven axes leave empty."""
     x = rect[0] + 0.01
     y = rect[1] + rect[3] - 0.02
     dy = 0.115 / MARG_FIG_H
+    if show_arms:
+        for k, (lab, colour) in enumerate((("with transfection reporter", WITH_C),
+                                           ("without", WITHOUT_C))):
+            yk = y - k * dy
+            fig.add_artist(plt.Line2D([x, x + 0.10 / MARG_FIG_W], [yk] * 2,
+                                      color=colour, lw=1.3))
+            fig.text(x + 0.13 / MARG_FIG_W, yk, lab, fontsize=7, color=INK,
+                     ha="left", va="center")
+        y -= 2.6 * dy
     fig.text(x, y, "published designs", fontsize=7, color=INK,
              ha="left", va="top")
     for k, name in enumerate(anchors):
@@ -1175,7 +1187,8 @@ def _plot_marginals_for_metric(df: pd.DataFrame, metric: str, ylim: "tuple[float
                                 hline: "float | None" = None,
                                 invert_y: bool = False,
                                 force_linear_x: bool = False,
-                                anchors: "list[str] | None" = None):
+                                anchors: "list[str] | None" = None,
+                                arms: "pd.DataFrame | None" = None):
     """Render the 7-axis marginals figure for a chosen power metric column.
 
     One panel per design axis: the sampled designs as a light scatter, the
@@ -1221,8 +1234,21 @@ def _plot_marginals_for_metric(df: pd.DataFrame, metric: str, ylim: "tuple[float
         display_log = log_scale and not force_linear_x
         x_smooth = np.log10(x) if log_scale else x
 
-        ax.scatter(x, y, s=1.2, alpha=0.32, color=DOT, linewidths=0,
-                   zorder=1, rasterized=True)
+        # With both reporter conditions the scatter is drawn per arm in that
+        # arm's hue: showing it for only one would read as the other curve
+        # having no data behind it.
+        if arms is None:
+            series = [(None, y, DOT, INK)]
+        else:
+            series = [("mwu", arms["mwu"].values, WITH_C, WITH_C),
+                      ("mwu_deflated", arms["mwu_deflated"].values,
+                       WITHOUT_C, WITHOUT_C)]
+        for _, ys, dot_c, _ in series:
+            # Two arms put twice the points on one panel, so the per-point
+            # alpha comes down to keep the wash from swallowing the anchor
+            # rules and the smoothers drawn over it.
+            ax.scatter(x, ys, s=1.2, alpha=0.12 if arms is not None else 0.32,
+                       color=dot_c, linewidths=0, zorder=1, rasterized=True)
 
         # Limits before the anchors, which need them to lay their tags out,
         # and computed from the data rather than read back off the axes: at
@@ -1263,20 +1289,22 @@ def _plot_marginals_for_metric(df: pd.DataFrame, metric: str, ylim: "tuple[float
                 # this cache the same curve is recomputed once per variant --
                 # 210 fits where 35 suffice, about an hour of the run.
                 # _loess_band is seeded, so caching cannot change the output.
-                ck = (metric, axis)
-                if ck not in _LOESS_CACHE:
-                    _LOESS_CACHE[ck] = _loess_band(x_smooth[valid], y[valid])
-                xg, yhat, lo, hi = _LOESS_CACHE[ck]
-                xg_disp = (10.0 ** xg) if log_scale else xg
-                ax.fill_between(xg_disp, lo, hi, color=INK, alpha=0.16, lw=0,
-                                zorder=4)
-                # Cased in white so the curve stays legible where it crosses
-                # the densest part of the scatter.
-                ax.plot(xg_disp, yhat, color=INK, lw=1.3, zorder=5,
-                        solid_capstyle="round",
-                        path_effects=[pe.Stroke(linewidth=2.8,
-                                                foreground="white"),
-                                      pe.Normal()])
+                for arm_name, ys, _, line_c in series:
+                    v = valid & np.isfinite(ys)
+                    ck = (metric, axis, arm_name)
+                    if ck not in _LOESS_CACHE:
+                        _LOESS_CACHE[ck] = _loess_band(x_smooth[v], ys[v])
+                    xg, yhat, lo, hi = _LOESS_CACHE[ck]
+                    xg_disp = (10.0 ** xg) if log_scale else xg
+                    ax.fill_between(xg_disp, lo, hi, color=line_c, alpha=0.16,
+                                    lw=0, zorder=4)
+                    # Cased in white so the curve stays legible where it
+                    # crosses the densest part of the scatter.
+                    ax.plot(xg_disp, yhat, color=line_c, lw=1.3, zorder=5,
+                            solid_capstyle="round",
+                            path_effects=[pe.Stroke(linewidth=2.8,
+                                                    foreground="white"),
+                                          pe.Normal()])
             except Exception as e:
                 print(f"  smoother failed for {axis}/{metric}: {e}", flush=True)
 
@@ -1286,7 +1314,8 @@ def _plot_marginals_for_metric(df: pd.DataFrame, metric: str, ylim: "tuple[float
         ax.set_xlabel(axis_label(axis), color=INK, labelpad=2)
         _style_marg_axes(ax, show_yticks=(ax_i % MARG_NCOL == 0))
 
-    _draw_anchor_key(fig, _marg_rect(len(AXIS_NAMES)), anchors)
+    _draw_anchor_key(fig, _marg_rect(len(AXIS_NAMES)), anchors,
+                     show_arms=arms is not None)
 
     # captioned=False for the manuscript panel: its figure legend says what
     # this is, and a title repeating the legend is wasted space. The
@@ -1352,13 +1381,29 @@ def _marginals_subtitle(df: pd.DataFrame) -> str:
 
 
 def _plot_manuscript_marginals(df: pd.DataFrame, suffix: str):
-    """Fig 5B only: the AUC metric with the three published designs overlaid."""
+    """Fig 5B only: the AUC metric, both reporter conditions, published
+    designs overlaid.
+
+    The reporter is a paired within-sample arm rather than a hypercube axis --
+    both arms read the same simulated counts -- so the two curves differ only
+    by the reporter, and the vertical gap between them is what it buys at that
+    point in the design space.
+    """
     metric, ylim, ylabel, hline, invert, fsuf, title = next(
         s for s in METRIC_SPECS if s[0] == MANUSCRIPT_METRIC)
     anchors = dict(ANCHOR_VARIANTS)[MANUSCRIPT_ANCHORS]
+    arms_path = OUT / f"samples_power{suffix}_arms.parquet"
+    arms = None
+    if arms_path.is_file():
+        a = pd.read_parquet(arms_path)
+        wide = a.pivot_table(index="sample_id", columns="arm", values=metric)
+        # Align to df's row order; a sample missing either arm drops out of
+        # both curves rather than shifting one of them.
+        arms = wide.reindex(df["sample_id"].values)
+        assert len(arms) == len(df), f"{len(arms)} arm rows for {len(df)} samples"
     _plot_marginals_for_metric(
         df, metric=metric, ylim=ylim, ylabel=ylabel, title=title,
-        subtitle=_marginals_subtitle(df), captioned=False,
+        subtitle=_marginals_subtitle(df), captioned=False, arms=arms,
         hline=hline, invert_y=invert, anchors=anchors,
         out_path=OUT / f"marginals{fsuf}{suffix}{MANUSCRIPT_ANCHORS}.svg")
 
@@ -1595,146 +1640,6 @@ def _pairwise_heatmaps_all(df, suffix: str):
     print(f"Saved: {out} ({ALL_FIG_W:.2f} x {fig_h:.2f} in, {n_pairs} pairs, "
           f"{empty} empty bins)", flush=True)
 
-
-# --- Fig: reporter contrast across the design space ------------------------
-# Geometry in inches at the size the page gives the figure. Two sub-panels per
-# axis, stacked and sharing x: power under both reporter conditions on top,
-# their difference below. Reading down a column answers "does the reporter's
-# benefit depend on this axis", which is the interaction the additive
-# decomposition assumes away.
-REP_FIG_W = 6.90
-REP_NCOL = 3
-REP_LEFT_IN, REP_RIGHT_IN = 0.52, 0.08
-REP_COLGAP_IN = 0.34
-REP_POW_H_IN = 0.92          # upper sub-panel: the two power curves
-REP_DEL_H_IN = 0.52          # lower sub-panel: their difference
-REP_SUBGAP_IN = 0.06         # between the pair; they share an x axis
-REP_HEADROOM_IN = 0.06
-REP_XFURN_IN = 0.40          # tick ladder and axis name under each pair
-REP_TOP_IN, REP_BOTTOM_IN = 0.10, 0.06
-REP_PLOT_W_IN = (REP_FIG_W - REP_LEFT_IN - REP_RIGHT_IN
-                 - (REP_NCOL - 1) * REP_COLGAP_IN) / REP_NCOL
-REP_PAIR_H_IN = REP_POW_H_IN + REP_SUBGAP_IN + REP_DEL_H_IN
-REP_ROW_IN = REP_HEADROOM_IN + REP_PAIR_H_IN + REP_XFURN_IN
-REP_NROW = int(np.ceil(len(AXIS_NAMES) / REP_NCOL))
-REP_FIG_H = REP_TOP_IN + REP_NROW * REP_ROW_IN + REP_BOTTOM_IN
-
-WITH_C, WITHOUT_C = "#0072b2", "#d55e00"     # Okabe-Ito; validated as a pair
-
-
-def _rep_rects(i: int):
-    """(power rect, delta rect) for the i-th axis, in figure fractions."""
-    r, c = divmod(i, REP_NCOL)
-    x = REP_LEFT_IN + c * (REP_PLOT_W_IN + REP_COLGAP_IN)
-    top = REP_TOP_IN + r * REP_ROW_IN + REP_HEADROOM_IN
-    pow_b = REP_FIG_H - top - REP_POW_H_IN
-    del_b = pow_b - REP_SUBGAP_IN - REP_DEL_H_IN
-    w = REP_PLOT_W_IN / REP_FIG_W
-    return ([x / REP_FIG_W, pow_b / REP_FIG_H, w, REP_POW_H_IN / REP_FIG_H],
-            [x / REP_FIG_W, del_b / REP_FIG_H, w, REP_DEL_H_IN / REP_FIG_H])
-
-
-def plot_reporter_marginals(arms_path: Path, out_path: Path,
-                            metric: str = "power_auc_1to3"):
-    """Power with and without a transfection reporter, across every axis.
-
-    The upper row of each pair is the design-space view an experimentalist
-    plans against; the lower row is the same data as a difference, where a
-    flat line means the reporter's benefit does not depend on that axis and a
-    sloped one means it does.
-    """
-    from matplotlib.ticker import NullLocator
-
-    d = pd.read_parquet(arms_path)
-    # One sample sits at the floor of the dynamic-range axis and produces no
-    # comparisons inside the FC window the metric averages over, so its power
-    # is undefined rather than zero. Dropping it keeps an invented zero out of
-    # the very region where that axis's curve is least constrained.
-    degenerate = sorted(d.loc[d[metric].isna(), "sample_id"].unique())
-    d = d[~d.sample_id.isin(degenerate)]
-    assert d[metric].notna().all(), "non-finite power survived the filter"
-
-    wide = d.pivot_table(index="sample_id", columns="arm", values=metric)
-    assert {"mwu", "mwu_deflated"} <= set(wide.columns), sorted(wide.columns)
-    base = d[d.arm == "mwu"].set_index("sample_id").loc[wide.index]
-    delta = (wide["mwu"] - wide["mwu_deflated"]).values
-
-    fig = plt.figure(figsize=(REP_FIG_W, REP_FIG_H))
-    # AXIS_BOUNDS is the pilot box; this sweep is drawn from UNION_AXIS_BOUNDS,
-    # whose dynamic-range axis runs to 120 rather than 8. Take the log flag
-    # from the sweep's own bounds and the limits from the data, as the other
-    # marginals do, so no panel is silently clipped to a narrower box.
-    for i, axis in enumerate(AXIS_NAMES):
-        log_scale = UNION_AXIS_BOUNDS[axis][2]
-        x = base[axis].values.astype(float)
-        lo, hi = float(x.min()), float(x.max())
-        if log_scale:
-            pad = 10 ** (0.03 * (np.log10(hi) - np.log10(lo)))
-            lo, hi = lo / pad, hi * pad
-        else:
-            pad = 0.03 * (hi - lo)
-            lo, hi = lo - pad, hi + pad
-        xs = np.log10(x) if log_scale else x
-        pr, dr = _rep_rects(i)
-        ax_p, ax_d = fig.add_axes(pr), fig.add_axes(dr)
-
-        for arm, colour in (("mwu", WITH_C), ("mwu_deflated", WITHOUT_C)):
-            y = wide[arm].values
-            gx, yhat, _, _ = _loess_band(xs, y, n_boot=20)
-            ax_p.plot(10 ** gx if log_scale else gx, yhat, color=colour, lw=1.6,
-                      zorder=4, solid_capstyle="round")
-
-        gx, dhat, dlo, dhi = _loess_band(xs, delta, n_boot=60)
-        gxp = 10 ** gx if log_scale else gx
-        ax_d.fill_between(gxp, dlo, dhi, color=INK, alpha=0.13, lw=0, zorder=3)
-        ax_d.plot(gxp, dhat, color=INK, lw=1.4, zorder=4)
-        ax_d.axhline(0, color=MUTED, lw=0.7, ls=(0, (3, 2)), zorder=2)
-
-        for ax in (ax_p, ax_d):
-            if log_scale:
-                ax.set_xscale("log")
-                ax.xaxis.set_minor_locator(NullLocator())
-            ax.set_xlim(lo, hi)
-            _style_marg_axes(ax, show_yticks=(i % REP_NCOL == 0))
-        ax_p.set_ylim(0, 1)
-        ax_d.set_ylim(-0.02, 0.42)
-        ax_p.tick_params(labelbottom=False)
-        ax_p.tick_params(labelsize=7)
-        ax_d.tick_params(labelsize=7)
-        ax_d.set_xlabel(axis_label(axis), fontsize=8, color=INK, labelpad=2)
-        if i % REP_NCOL == 0:
-            # Once per row, not once per figure: three rows cannot share one
-            # rotated label without it pointing at the wrong panel.
-            ax_p.set_ylabel("power", fontsize=8, color=INK, labelpad=2)
-            ax_d.set_ylabel("benefit", fontsize=8, color=INK, labelpad=2)
-        else:
-            ax_p.tick_params(labelleft=False)
-            ax_d.tick_params(labelleft=False)
-
-    # The key goes in the cell the seventh axis leaves empty.
-    kr, _ = _rep_rects(len(AXIS_NAMES))
-    kx, ky = kr[0], kr[1] + kr[3]
-    fig.text(kx, ky - 0.02, "power", fontsize=8, color=INK, fontweight="bold",
-             va="top")
-    for k, (lab, colour) in enumerate((("with reporter", WITH_C),
-                                       ("without reporter", WITHOUT_C))):
-        yk = ky - 0.075 - k * 0.055
-        fig.add_artist(plt.Line2D([kx, kx + 0.035], [yk, yk], color=colour,
-                                  lw=1.6, transform=fig.transFigure))
-        fig.text(kx + 0.045, yk, lab, fontsize=7, color=INK, va="center")
-    fig.text(kx, ky - 0.185, "difference", fontsize=8, color=INK,
-             fontweight="bold", va="top")
-    fig.text(kx, ky - 0.235,
-             "flat: the reporter's benefit does\nnot depend on that axis",
-             fontsize=7, color=MUTED, va="top", linespacing=1.35)
-
-
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, format="svg")
-    plt.close(fig)
-    print(f"Saved: {out_path} ({REP_FIG_W:.2f} x {REP_FIG_H:.2f} in, "
-          f"{len(wide)} samples, dropped {degenerate})", flush=True)
 
 # --- Fig 5A geometry, in inches at the size the page gives the panel --------
 # Three pairs in one row. Each panel carries its own pair of axes, so each
