@@ -358,7 +358,7 @@ AXIS_DISPLAY_SHORT = {
     "bcs_per_cre": "barcodes\nper element",
     "moi": "MOI",
     "minP": "basal\nexpression",
-    "activity_max_mult": "dynamic range",
+    "activity_max_mult": "dynamic\nrange",
 }
 
 
@@ -423,11 +423,14 @@ plt.rcParams.update({
     "pdf.fonttype": 42,
     "ps.fonttype": 42,
     "font.size": 7,
-    "axes.labelsize": 7.5,
-    "axes.titlesize": 7.5,
-    "xtick.labelsize": 6.5,
-    "ytick.labelsize": 6.5,
-    "legend.fontsize": 6.5,
+    # House convention, in points as rendered on the page: 7 for ticks,
+    # annotations and legends, 8 for axis labels, 9 for titles. The heatmap
+    # grids pass their sizes explicitly; these carry the marginals.
+    "axes.labelsize": 8,
+    "axes.titlesize": 9,
+    "xtick.labelsize": 7,
+    "ytick.labelsize": 7,
+    "legend.fontsize": 7,
     "axes.unicode_minus": False,  # the repo is plain ASCII
 })
 
@@ -1031,7 +1034,7 @@ def _draw_anchor_rules(ax, axis: str, anchors: list, data_lo: float,
                     transform=ax.get_xaxis_transform())
             ax.text(edge, 1.015, f"  {tag} off scale" if off_low
                     else f"{tag} off scale  ",
-                    fontsize=6, color=color, va="baseline",
+                    fontsize=7, color=color, va="baseline",
                     ha="left" if off_low else "right",
                     transform=ax.get_xaxis_transform())
             continue
@@ -1042,7 +1045,7 @@ def _draw_anchor_rules(ax, axis: str, anchors: list, data_lo: float,
                   for f, r in placed):
             row += 1
         ax.axvline(xv, color=color, linestyle=(0, (3, 2)), lw=0.8, zorder=3)
-        ax.text(xv, 1.015 + 0.085 * row, tag, fontsize=6, fontweight="bold",
+        ax.text(xv, 1.015 + 0.085 * row, tag, fontsize=7, fontweight="bold",
                 ha="center", va="baseline", color=color,
                 transform=ax.get_xaxis_transform())
         placed.append((frac, row))
@@ -1054,7 +1057,7 @@ def _draw_anchor_key(fig, rect, anchors: list):
     x = rect[0] + 0.01
     y = rect[1] + rect[3] - 0.02
     dy = 0.115 / MARG_FIG_H
-    fig.text(x, y, "published designs", fontsize=6.5, color=INK,
+    fig.text(x, y, "published designs", fontsize=7, color=INK,
              ha="left", va="top")
     for k, name in enumerate(anchors):
         color = EMPIRICAL_COLORS.get(name, INK)
@@ -1062,7 +1065,7 @@ def _draw_anchor_key(fig, rect, anchors: list):
         yk = y - (k + 1.35) * dy
         fig.add_artist(plt.Line2D([x, x + 0.10 / MARG_FIG_W], [yk] * 2,
                                   color=color, lw=0.8, ls=(0, (3, 2))))
-        fig.text(x + 0.13 / MARG_FIG_W, yk, f"{tag}   {full}", fontsize=6,
+        fig.text(x + 0.13 / MARG_FIG_W, yk, f"{tag}   {full}", fontsize=7,
                  color=MUTED, ha="left", va="center")
 
 
@@ -1192,13 +1195,13 @@ def _plot_marginals_for_metric(df: pd.DataFrame, metric: str, ylim: "tuple[float
     if captioned:
         fig.text(MARG_LEFT_IN / MARG_FIG_W, 1 - 0.115 / MARG_FIG_H,
                  title + ("  [linear x]" if force_linear_x else ""),
-                 ha="left", va="center", fontsize=7.5, color=INK)
+                 ha="left", va="center", fontsize=8, color=INK)
         if subtitle:
             fig.text(MARG_LEFT_IN / MARG_FIG_W, 1 - 0.255 / MARG_FIG_H,
-                     subtitle, ha="left", va="center", fontsize=6.5,
+                     subtitle, ha="left", va="center", fontsize=7,
                      color=MUTED)
     fig.text(0.075 / MARG_FIG_W, 0.5, ylabel, rotation=90, ha="left",
-             va="center", fontsize=7.5, color=INK)
+             va="center", fontsize=8, color=INK)
     _assert_labels_fit(fig, f"marginals/{metric}")
     # No bbox_inches="tight": the panel is placed at a fixed width on the page
     # and the margins above are what put its plot areas where they are.
@@ -1429,7 +1432,7 @@ ALL_LEFT_IN, ALL_RIGHT_IN = 0.56, 0.06
 # Top margin holds the power strip and its two-line label, nothing else --
 # but sized for the strip's rendered height, tick labels included, not for
 # where the strip itself is placed. See _assert_margin_clears_panels.
-ALL_TOP_IN, ALL_BOTTOM_IN = 0.44, 0.50
+ALL_TOP_IN, ALL_BOTTOM_IN = 0.60, 0.50
 # Panels butt up against one another without this and the triangle reads as
 # one continuous field rather than as a grid of separate surfaces.
 ALL_GAP_IN = 0.05
@@ -1437,7 +1440,8 @@ ALL_GAP_IN = 0.05
 # own caption is more than a page holds, and nothing about the cells needs to
 # be square -- their two axes are different quantities.
 ALL_ROW_FRAC = 0.84
-ALL_LABEL_PT = 6.5           # a 7.5 pt "basal expression" is taller than a row
+ALL_LABEL_PT, ALL_TICK_PT = 8, 7   # house convention; the long labels are wrapped
+                             # (AXIS_DISPLAY_SHORT) so they clear the row height
 
 
 def _pairwise_heatmaps_all(df, suffix: str):
@@ -1467,7 +1471,7 @@ def _pairwise_heatmaps_all(df, suffix: str):
             ax = fig.add_axes(rect)
             im, n_empty = _heat_panel(ax, df, AXIS_NAMES[j], AXIS_NAMES[i],
                                       xlabel=(i == n - 1), ylabel=(j == 0),
-                                      labelsize=ALL_LABEL_PT)
+                                      labelsize=ALL_LABEL_PT, ticksize=ALL_TICK_PT)
             empty += n_empty
             n_pairs += 1
             if i != n - 1:
@@ -1478,7 +1482,8 @@ def _pairwise_heatmaps_all(df, suffix: str):
         f"drew {n_pairs} panels for {n} axes, expected {n * (n - 1) // 2}")
 
     # See the note in _pairwise_heatmaps: caption's job, not the figure's.
-    _power_strip(fig, im, ALL_FIG_W, fig_h)
+    _power_strip(fig, im, ALL_FIG_W, fig_h, top_in=0.31,
+                 ticksize=ALL_TICK_PT, labelsize=ALL_LABEL_PT)
     _assert_labels_fit(fig, "Fig S8")
     out = OUT / f"pairwise_heatmaps_all{suffix}.svg"
     fig.savefig(out, format="svg")
@@ -1502,8 +1507,8 @@ PAIR_TOP_IN, PAIR_BOTTOM_IN = 0.52, 0.44
 # so this is set by the label's height at PAIR_TICK_PT, not by the strip.
 PAIR_STRIP_TOP_IN = 0.31
 # Manuscript type scale, in points as rendered on the page: 7 pt for tick
-# and annotation text, 8 pt for axis labels. Fig S8 keeps its own smaller
-# scale -- its rows are too short to carry an 8 pt label (see ALL_LABEL_PT).
+# and annotation text, 8 pt for axis labels. The all-pairs grid is on the same
+# scale; its long axis labels are wrapped to clear the row height.
 PAIR_LABEL_PT, PAIR_TICK_PT = 8, 7
 
 

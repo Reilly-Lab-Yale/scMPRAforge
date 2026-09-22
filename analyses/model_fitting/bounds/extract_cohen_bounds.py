@@ -7,9 +7,9 @@ sys.path.insert(0, '/nfs/roberts/project/pi_skr2/mcn26/tabula-rasa')
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 from dask.distributed import Client, LocalCluster
+import bounds_figures
 import scMPRAforge.core as scm
 from pathlib import Path
 
@@ -63,25 +63,9 @@ def main():
         bounds.to_tgz(str(tgz_path))
         print(f"  Saved preset: {tgz_path}", flush=True)
 
-        # Transfection model plot
-        fig, ax = plt.subplots(figsize=(8, 5))
-        bounds.plot_transfection(ax=ax)
-        ax.set_title(f"{short} -- transfection model")
-        fig.tight_layout()
-        svg_path = OUT_DIR / f"{short}_transfection.svg"
-        fig.savefig(str(svg_path))
-        plt.close(fig)
-        print(f"  Saved: {svg_path}", flush=True)
-
-        # Library model plot
-        fig, ax = plt.subplots(figsize=(8, 5))
-        bounds.library_model.plot(ax=ax)
-        ax.set_title(f"{short} -- library model")
-        fig.tight_layout()
-        svg_path = OUT_DIR / f"{short}_library.svg"
-        fig.savefig(str(svg_path))
-        plt.close(fig)
-        print(f"  Saved: {svg_path}", flush=True)
+        # Transfection and library model plots
+        for svg_path in bounds_figures.save_model_plots(bounds, short, OUT_DIR):
+            print(f"  Saved: {svg_path}", flush=True)
 
     client.close()
     cluster.close()
