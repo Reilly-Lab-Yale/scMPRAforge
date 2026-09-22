@@ -67,11 +67,32 @@ LEGEND_LOC = {"ROC": "lower right", "PRC": "lower left"}
 
 # A fixed hue per test, for the same reason the legend carries no numbers: it
 # is shared. Matplotlib colours by draw order, so the Yin et al. panels, which
-# run three tests rather than five, put t-test in the green the legend has
-# already given to pseudobulk. These are the default cycle colours in the order
-# the five-test panels get them, so only the three-test panels change.
-TEST_COLOR = {"ks": "#1f77b4", "mwu": "#ff7f0e", "pseudobulk": "#2ca02c",
-              "ttest": "#d62728", "wald_auto": "#9467bd"}
+# run three tests rather than five, would put t-test in the hue the legend has
+# already given to pseudobulk.
+#
+# Okabe-Ito, as in activity_calibration/fpr_dumbbell.py, which gives MWU and
+# the t-test these same two hexes. Of the eight Okabe-Ito slots only blue,
+# vermillion and bluish green clear the categorical checks against a white page
+# unaltered; the rest sit under 3:1 contrast or outside the lightness band. The
+# green is therefore re-stepped (a change no eye resolves) and the last two
+# slots are darker steps on the purple side, where every Okabe-Ito entry is too
+# light to clear contrast against the page.
+#
+# All five clear the dataviz checks on every pair, not just neighbours, which
+# is what five curves sharing one axis need. MWU holds the widest margin over
+# those thresholds of the five: it is the test the paper adopts and the curve a
+# reader follows.
+#
+#   node scripts/validate_palette.js \
+#       "#0072b2,#d55e00,#1ca271,#5d06ca,#90026f" --pairs all --mode light
+TEST_COLOR = {"mwu": "#0072b2", "ttest": "#d55e00", "ks": "#1ca271",
+              "pseudobulk": "#5d06ca", "wald_auto": "#90026f"}
+
+# Chance and the PRC prevalence line are references, not results. Left to the
+# property cycle they take the next colour after the curves, which on a
+# five-test panel is a sixth hue nobody chose and on the others is a hue a
+# curve already holds.
+BASELINE_GREY = "#444444"
 
 DATASETS = {
     "shendure": ("Lalanne et al.", "shendure_5x5_activity"),
@@ -130,8 +151,9 @@ def relabel(entry):
 
 def recolor(ax):
     """Give each test its own hue regardless of how many ran on this panel."""
-    curves = [ln for ln in ax.get_lines()
-              if ln.get_label().partition(" ")[0] in TEST_COLOR]
+    curves, refs = [], []
+    for ln in ax.get_lines():
+        (curves if ln.get_label().partition(" ")[0] in TEST_COLOR else refs).append(ln)
     assert curves, f"no test curves found among {[l.get_label() for l in ax.get_lines()]}"
     # One scatter per curve, added in curve order. The PRC baseline is a
     # LineCollection and must not be counted among them.
@@ -143,11 +165,19 @@ def recolor(ax):
         line.set_color(colour)
         if marks:
             marks[i].set_color(colour)
+    for ref in refs:
+        ref.set_color(BASELINE_GREY)
+    for coll in ax.collections:
+        if not isinstance(coll, PathCollection):
+            coll.set_color(BASELINE_GREY)
+    drawn = {c.get_color() for c in curves}
+    assert len(drawn) == len(curves), f"two curves share a hue: {drawn}"
+    assert BASELINE_GREY not in drawn, "a curve is wearing the baseline grey"
 
 
 def label_baseline(ax, kind, value):
     """Name the baseline on the line itself, where its panel can be seen."""
-    grey = "#444444"
+    grey = BASELINE_GREY
     if kind == "ROC":
         # Match the diagonal's on-screen slope; the axes is not square, so 45
         # degrees would visibly miss it.
