@@ -131,11 +131,11 @@ plt.rcParams.update({
     "pdf.fonttype": 42,
     "ps.fonttype": 42,
     "font.size": 7,
-    "axes.labelsize": 7.5,
-    "axes.titlesize": 7.5,
-    "xtick.labelsize": 6.5,
-    "ytick.labelsize": 6.5,
-    "legend.fontsize": 6.5,
+    "axes.labelsize": 8,
+    "axes.titlesize": 9,
+    "xtick.labelsize": 7,
+    "ytick.labelsize": 7,
+    "legend.fontsize": 7,
     "axes.unicode_minus": False,  # the repo is plain ASCII
 })
 
@@ -270,7 +270,7 @@ def fig_a_reporter_dumbbell(powers):
     # rule that no dumbbell reaches.
     axes[-1].annotate("80%", xy=(0.8, 0.0), xytext=(3, 0),
                       textcoords="offset points",
-                      fontsize=6, color=MUTED, ha="left", va="center")
+                      fontsize=7, color=MUTED, ha="left", va="center")
 
     axes[-1].set_xlabel(f"power at {TARGET_FC:g}-fold change", color=INK)
 
@@ -279,7 +279,7 @@ def fig_a_reporter_dumbbell(powers):
                ncol=2, frameon=False, handletextpad=0.15, columnspacing=1.0,
                borderpad=0.0, borderaxespad=0.0)
     fig.subplots_adjust(
-        left=1.12 / FIG_W, right=1 - 0.04 / FIG_W,
+        left=1.24 / FIG_W, right=1 - 0.04 / FIG_W,
         top=1 - top_in / height, bottom=bottom_in / height,
     )
     out = OUT_DIR / "fig_a_reporter_dumbbell.svg"
@@ -343,7 +343,7 @@ def fig_b_power_curves(curves):
     """Fig 4B: power vs fold change, both arms, one curve per cell type."""
     # Enough right margin to carry the direct labels; no legend box, since two
     # series that are labelled where they separate do not need one.
-    left_in, right_in = 0.40, 0.70
+    left_in, right_in = 0.40, 0.84
     top_in, gap_in, bottom_in = 0.26, 0.30, 0.38
     panel_in = 1.20
     height = top_in + panel_in * len(PAIRED_DSETS) + gap_in + bottom_in
@@ -374,7 +374,7 @@ def fig_b_power_curves(curves):
                         ref_display,
                         xy=(sub["fc"].iloc[-1], sub["power"].iloc[-1]),
                         xytext=(4, 0), textcoords="offset points",
-                        fontsize=6, color=INK, va="center", ha="left",
+                        fontsize=7, color=INK, va="center", ha="left",
                         annotation_clip=False,
                     )
 
@@ -390,14 +390,14 @@ def fig_b_power_curves(curves):
     axes[0].annotate(f"{TARGET_FC:g}x", xy=(TARGET_FC, 1.0),
                      xycoords=("data", "axes fraction"),
                      xytext=(2, 1), textcoords="offset points",
-                     fontsize=6, color=MUTED, ha="left", va="bottom")
+                     fontsize=7, color=MUTED, ha="left", va="bottom")
     # Direct labels go where the two arms are furthest apart: Lalanne et al.'s
     # right edge, where the bands are separated by most of the axis. One
     # labelling serves both panels, which share colours and axes.
     lower = axes[-1]
     lower.annotate("80%", xy=(FC_WINDOW[0], 0.8),
                    xytext=(2, 2), textcoords="offset points",
-                   fontsize=6, color=MUTED, ha="left", va="bottom")
+                   fontsize=7, color=MUTED, ha="left", va="bottom")
     for arm, color, label in (("reporter", COLOR_REP, LABEL_REP),
                               ("deflated", COLOR_DEFL, LABEL_DEFL)):
         df = curves["shendure"][arm]
@@ -412,7 +412,7 @@ def fig_b_power_curves(curves):
                    clip_on=False, zorder=5)
         lower.annotate(label.replace(" ", "\n"), xy=(FC_WINDOW[1] + 0.052, y),
                        xytext=(0, 0), textcoords="offset points",
-                       fontsize=6, color=INK, va="center", ha="left",
+                       fontsize=7, color=INK, va="center", ha="left",
                        linespacing=1.25, annotation_clip=False)
 
     lower.set_xlabel("fold change", color=INK)

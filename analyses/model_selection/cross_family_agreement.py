@@ -226,7 +226,7 @@ def main():
     ax_l.set_xlim(lims); ax_l.set_ylim(lims)
     ax_l.set_xlabel(r"$\mu$, by-cell-type family", fontsize=9, color=INK)
     ax_l.set_ylabel(r"$\mu$, by-CRE family", fontsize=9, color=INK)
-    ax_l.set_title("shared means, canonical fits", fontsize=10, color=INK)
+    ax_l.set_title("shared means, canonical fits", fontsize=9, color=INK)
 
     # One row per fit: median disagreement with the 5th-95th percentile span.
     y = np.arange(len(rows))
@@ -238,14 +238,14 @@ def main():
                      zorder=4, marker="o" if r["canonical"] else "x")
     ax_r.set_yticks(y)
     ax_r.set_yticklabels([short(r["name"]) + (" *" if r["canonical"] else "")
-                          for r in rows], fontsize=7.5)
+                          for r in rows], fontsize=7)
     ax_r.set_xscale("log")
     ax_r.set_xlim(left=1e-5)
     ax_r.set_xlabel("relative disagreement between families\n"
                     "(median, 5th-95th percentile)", fontsize=9, color=INK)
-    ax_r.set_title("all fits with saved parameters", fontsize=10, color=INK)
+    ax_r.set_title("all fits with saved parameters", fontsize=9, color=INK)
     ax_r.text(0.99, 0.02, "* canonical", transform=ax_r.transAxes, ha="right",
-              va="bottom", fontsize=7.5, color=MUTED)
+              va="bottom", fontsize=7, color=MUTED)
 
     for ax in (ax_l, ax_r):
         ax.grid(True, color="#e6e6e6", lw=0.8, zorder=0)
@@ -254,7 +254,7 @@ def main():
             ax.spines[side].set_visible(False)
         for side in ("left", "bottom"):
             ax.spines[side].set_color("#cccccc")
-        ax.tick_params(colors=MUTED, labelsize=8, length=0)
+        ax.tick_params(colors=MUTED, labelsize=7, length=0)
 
     fig.tight_layout()
     OUT.mkdir(exist_ok=True)
@@ -280,7 +280,7 @@ def manuscript_panel(rows):
              if r["canonical"] and r["dataset"] in MANUSCRIPT_DATASETS]
     canon.sort(key=lambda r: r["rel"].median())
 
-    fig, ax = plt.subplots(figsize=(4.6, 2.0))
+    fig, ax = plt.subplots(figsize=(4.11, 1.9))
     y = np.arange(len(canon))
     med = [100 * r["rel"].median() for r in canon]
     p95 = [100 * r["rel"].quantile(0.95) for r in canon]
@@ -295,7 +295,7 @@ def manuscript_panel(rows):
     ax.set_yticks(y)
     ax.set_yticklabels([DATASET_LABEL[r["dataset"]] for r in canon], fontsize=8)
     ax.set_xlabel("disagreement between stratification directions\n"
-                  "(median bar, whisker to 95th percentile)", fontsize=8.5,
+                  "(median bar, whisker to 95th percentile)", fontsize=8,
                   color=INK)
     ax.xaxis.set_major_formatter(lambda v, _: f"{v:g}%")
     ax.set_xlim(0, max(p95) * 1.45)
@@ -305,7 +305,7 @@ def manuscript_panel(rows):
         ax.spines[side].set_visible(False)
     for side in ("left", "bottom"):
         ax.spines[side].set_color("#cccccc")
-    ax.tick_params(colors=MUTED, labelsize=8, length=0)
+    ax.tick_params(colors=MUTED, labelsize=7, length=0)
 
     fig.tight_layout()
     for ext in ("svg", "png"):

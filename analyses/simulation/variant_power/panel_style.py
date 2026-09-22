@@ -87,7 +87,7 @@ CBAR_TOP_IN = 0.345          # from the top of the figure
 TITLE_TOP_IN, SUBTITLE_TOP_IN = 0.115, 0.245
 
 # Four x ticks out of 24 log-spaced baselines: enough to read the range the
-# axis spans, and the widest label (five characters at 6.5 pt) still clears
+# axis spans, and the widest label (five characters at 7 pt) still clears
 # its neighbour across 1.70 in of axis. Five ticks does not.
 N_XTICKS = 4
 
@@ -96,11 +96,11 @@ plt.rcParams.update({
     "pdf.fonttype": 42,
     "ps.fonttype": 42,
     "font.size": 7,
-    "axes.labelsize": 7.5,
-    "axes.titlesize": 7.5,
-    "xtick.labelsize": 6.5,
-    "ytick.labelsize": 6.5,
-    "legend.fontsize": 6.5,
+    "axes.labelsize": 8,
+    "axes.titlesize": 9,
+    "xtick.labelsize": 7,
+    "ytick.labelsize": 7,
+    "legend.fontsize": 7,
     "axes.unicode_minus": False,  # the repo is plain ASCII
 })
 
@@ -165,7 +165,7 @@ def _set_xticks(ax, mu_vals):
 def _set_yticks(ax, fc_vals):
     """Label every other fold-change row, top row included.
 
-    Ten rows over 0.95 in is a 0.095 in pitch, which a 6.5 pt label very
+    Ten rows over 0.95 in is a 0.095 in pitch, which a 7 pt label very
     nearly fills; every other row leaves the ladder readable and the grid
     lines still show where the unlabelled rows are.
     """
@@ -186,10 +186,10 @@ def _draw_colorbar(fig, mesh):
     cbar.set_ticks([0.0, 0.5, 1.0])
     cbar.set_ticklabels(["0", "0.5", "1"])
     cbar.outline.set_visible(False)
-    cax.tick_params(length=0, labelsize=6, colors=MUTED, pad=1.5)
+    cax.tick_params(length=0, labelsize=7, colors=MUTED, pad=1.5)
     fig.text((LEFT_IN + CBAR_W_IN + 0.05) / FIG_W,
              1 - (CBAR_TOP_IN + CBAR_H_IN / 2) / FIG_H,
-             "power", ha="left", va="center", fontsize=6.5, color=MUTED)
+             "power", ha="left", va="center", fontsize=7, color=MUTED)
 
 
 def _draw_title(fig, dataset, ct, n_cells):
@@ -202,10 +202,10 @@ def _draw_title(fig, dataset, ct, n_cells):
     x = LEFT_IN / FIG_W
     return [
         fig.text(x, 1 - TITLE_TOP_IN / FIG_H, DISPLAY_NAME[dataset],
-                 ha="left", va="center", fontsize=7.5, color=INK),
+                 ha="left", va="center", fontsize=9, color=INK),
         fig.text(x, 1 - SUBTITLE_TOP_IN / FIG_H,
                  f"{display_ct(ct, dataset)}, {n_cells:,} cells",
-                 ha="left", va="center", fontsize=6.5, color=MUTED),
+                 ha="left", va="center", fontsize=7, color=MUTED),
     ]
 
 
@@ -245,7 +245,10 @@ def plot_panel(pivot, dataset, ct, n_cells, out_path):
     _set_xticks(ax, list(pivot.columns))
     _set_yticks(ax, list(pivot.index))
     ax.tick_params(length=0, colors=INK, pad=2)
-    ax.set_xlabel("baseline activity (counts per cell)", color=INK, labelpad=2)
+    # "counts/cell" rather than "counts per cell": centred on axes whose left
+    # margin is much the wider, the spelt-out form overhangs the right edge of
+    # a 2.21 in canvas to within a point at 8 pt.
+    ax.set_xlabel("baseline activity (counts/cell)", color=INK, labelpad=2)
     ax.set_ylabel("|log2 FC|", color=INK, labelpad=2)
 
     _draw_colorbar(fig, ax.collections[0])

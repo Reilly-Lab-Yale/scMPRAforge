@@ -42,6 +42,15 @@ SIM_ROOT = pathlib.Path("/nfs/roberts/project/pi_skr2/shared/tabula_data_new/sim
 N_GT_DRAWS = 5
 HYPOTHESIS_SET = "hs_all_ct"
 
+# The panel is drawn at exactly the width Fig. 2 includes it at, so LaTeX
+# applies no scaling and the type sizes set here are the sizes on the page:
+# 7pt for tick labels, legend and annotation, 8pt for axis labels, 9pt for the
+# panel title. Margins are in inches, hence the explicit subplots_adjust --
+# a tight bbox would crop the canvas back off its target width.
+PANEL_W, PANEL_H = 3.04, 2.70
+MARGIN_L, MARGIN_R, MARGIN_T, MARGIN_B = 0.50, 0.08, 0.26, 0.42
+TICK_PT, LEGEND_PT, ANNOT_PT, AXIS_PT, TITLE_PT = 7, 7, 7, 8, 9
+
 # Legends carry the internal test identifiers; the manuscript uses these.
 TEST_LABEL = {"mwu": "MWU", "ttest": "t-test", "ks": "KS",
               "pseudobulk": "pseudobulk", "wald_auto": "Wald"}
@@ -58,11 +67,32 @@ LEGEND_LOC = {"ROC": "lower right", "PRC": "lower left"}
 
 # A fixed hue per test, for the same reason the legend carries no numbers: it
 # is shared. Matplotlib colours by draw order, so the Yin et al. panels, which
-# run three tests rather than five, put t-test in the green the legend has
-# already given to pseudobulk. These are the default cycle colours in the order
-# the five-test panels get them, so only the three-test panels change.
-TEST_COLOR = {"ks": "#1f77b4", "mwu": "#ff7f0e", "pseudobulk": "#2ca02c",
-              "ttest": "#d62728", "wald_auto": "#9467bd"}
+# run three tests rather than five, would put t-test in the hue the legend has
+# already given to pseudobulk.
+#
+# Okabe-Ito, as in activity_calibration/fpr_dumbbell.py, which gives MWU and
+# the t-test these same two hexes. Of the eight Okabe-Ito slots only blue,
+# vermillion and bluish green clear the categorical checks against a white page
+# unaltered; the rest sit under 3:1 contrast or outside the lightness band. The
+# green is therefore re-stepped (a change no eye resolves) and the last two
+# slots are darker steps on the purple side, where every Okabe-Ito entry is too
+# light to clear contrast against the page.
+#
+# All five clear the dataviz checks on every pair, not just neighbours, which
+# is what five curves sharing one axis need. MWU holds the widest margin over
+# those thresholds of the five: it is the test the paper adopts and the curve a
+# reader follows.
+#
+#   node scripts/validate_palette.js \
+#       "#0072b2,#d55e00,#1ca271,#5d06ca,#90026f" --pairs all --mode light
+TEST_COLOR = {"mwu": "#0072b2", "ttest": "#d55e00", "ks": "#1ca271",
+              "pseudobulk": "#5d06ca", "wald_auto": "#90026f"}
+
+# Chance and the PRC prevalence line are references, not results. Left to the
+# property cycle they take the next colour after the curves, which on a
+# five-test panel is a sixth hue nobody chose and on the others is a hue a
+# curve already holds.
+BASELINE_GREY = "#444444"
 
 DATASETS = {
     "shendure": ("Lalanne et al.", "shendure_5x5_activity"),
@@ -121,8 +151,9 @@ def relabel(entry):
 
 def recolor(ax):
     """Give each test its own hue regardless of how many ran on this panel."""
-    curves = [ln for ln in ax.get_lines()
-              if ln.get_label().partition(" ")[0] in TEST_COLOR]
+    curves, refs = [], []
+    for ln in ax.get_lines():
+        (curves if ln.get_label().partition(" ")[0] in TEST_COLOR else refs).append(ln)
     assert curves, f"no test curves found among {[l.get_label() for l in ax.get_lines()]}"
     # One scatter per curve, added in curve order. The PRC baseline is a
     # LineCollection and must not be counted among them.
@@ -134,16 +165,24 @@ def recolor(ax):
         line.set_color(colour)
         if marks:
             marks[i].set_color(colour)
+    for ref in refs:
+        ref.set_color(BASELINE_GREY)
+    for coll in ax.collections:
+        if not isinstance(coll, PathCollection):
+            coll.set_color(BASELINE_GREY)
+    drawn = {c.get_color() for c in curves}
+    assert len(drawn) == len(curves), f"two curves share a hue: {drawn}"
+    assert BASELINE_GREY not in drawn, "a curve is wearing the baseline grey"
 
 
 def label_baseline(ax, kind, value):
     """Name the baseline on the line itself, where its panel can be seen."""
-    grey = "#444444"
+    grey = BASELINE_GREY
     if kind == "ROC":
         # Match the diagonal's on-screen slope; the axes is not square, so 45
         # degrees would visibly miss it.
         (x0, y0), (x1, y1) = ax.transData.transform([[0, 0], [1, 1]])
-        ax.text(0.63, 0.60, "chance", fontsize=8, color=grey,
+        ax.text(0.63, 0.60, "chance", fontsize=ANNOT_PT, color=grey,
                 rotation=np.degrees(np.arctan2(y1 - y0, x1 - x0)),
                 rotation_mode="anchor", ha="center", va="top")
     else:
@@ -151,7 +190,38 @@ def label_baseline(ax, kind, value):
         # takes the left.
         ax.annotate(f"baseline {value:.3f}", xy=(0.62, value),
                     xytext=(0, 3), textcoords="offset points",
-                    fontsize=8, color=grey, ha="center", va="bottom")
+                    fontsize=ANNOT_PT, color=grey, ha="center", va="bottom")
+
+
+def style_panel(fig, label, kind, slug=""):
+    """Size the canvas, restyle the type, recolour, and fix up the legend."""
+    fig.set_size_inches(PANEL_W, PANEL_H)
+    fig.set_layout_engine("none")
+    fig.subplots_adjust(left=MARGIN_L / PANEL_W, right=1 - MARGIN_R / PANEL_W,
+                        top=1 - MARGIN_T / PANEL_H, bottom=MARGIN_B / PANEL_H)
+    for ax in fig.axes:
+        # One title, naming the regime; the generic "ROC Curve" the plotting
+        # call sets is redundant beside it.
+        ax.set_title(f"{label}, {kind}", fontsize=TITLE_PT)
+        ax.xaxis.label.set_fontsize(AXIS_PT)
+        ax.yaxis.label.set_fontsize(AXIS_PT)
+        ax.tick_params(labelsize=TICK_PT)
+        recolor(ax)
+        if ax.get_legend() is None:
+            continue
+        handles, labels = ax.get_legend_handles_labels()
+        base = [BASELINE_LABEL.match(t) for t in labels]
+        assert sum(m is not None for m in base) == 1, (
+            f"{slug} {kind}: expected exactly one baseline entry in {labels}")
+        hit = next(m for m in base if m)
+        label_baseline(ax, kind, float(hit.group(2) or 0.0))
+
+        keep = [(h, relabel(t)) for h, t, m in zip(handles, labels, base)
+                if m is None]
+        assert keep, f"{slug} {kind}: every legend entry was dropped"
+        ax.legend(*zip(*keep), loc=LEGEND_LOC[kind], fontsize=LEGEND_PT,
+                  framealpha=0.95, borderpad=0.5, labelspacing=0.35,
+                  handlelength=1.4)
 
 
 def main():
@@ -169,30 +239,9 @@ def main():
             sim.median_performance_curve(
                 HYPOTHESIS_SET, kind, test_types=tests, include_alpha=True)
             fig = plt.gcf()
-            fig.set_size_inches(4.4, 3.6)
-            for ax in fig.axes:
-                # One title, naming the regime; the generic "ROC Curve" the
-                # plotting call sets is redundant beside it.
-                ax.set_title(f"{label}, {kind}", fontsize=10)
-                recolor(ax)
-                if ax.get_legend() is None:
-                    continue
-                handles, labels = ax.get_legend_handles_labels()
-                base = [BASELINE_LABEL.match(t) for t in labels]
-                assert sum(m is not None for m in base) == 1, (
-                    f"{slug} {kind}: expected exactly one baseline entry in "
-                    f"{labels}")
-                hit = next(m for m in base if m)
-                label_baseline(ax, kind, float(hit.group(2) or 0.0))
-
-                keep = [(h, relabel(t)) for h, t, m in zip(handles, labels, base)
-                        if m is None]
-                assert keep, f"{slug} {kind}: every legend entry was dropped"
-                ax.legend(*zip(*keep), loc=LEGEND_LOC[kind], fontsize=8,
-                          framealpha=0.95, borderpad=0.6, labelspacing=0.45,
-                          handlelength=1.6)
+            style_panel(fig, label, kind, slug)
             out = OUT / f"{slug}_median_{kind.lower()}.svg"
-            fig.savefig(out, format="svg", bbox_inches="tight")
+            fig.savefig(out, format="svg")
             plt.close(fig)
             print(f"    wrote {out.name}")
 
