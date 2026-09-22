@@ -14,6 +14,10 @@ covers a superset of their ranges on every axis, so nothing is lost in
 coverage. This file records that provenance, since the leftover `s`/`t`/`u`
 sample-id prefixes and the box-calibration history may otherwise be opaque.
 
+Each union sample is tested under eight arms rather than one, so the sweep
+also resolves how the *transfection reporter* interacts with the seven design
+axes. See "Test arms" below.
+
 ## Sweeps
 
 | Sweep | n_pts | LHS seed | sid prefix | Box | Role |
@@ -27,6 +31,50 @@ The union box is the superset of all three exploratory boxes on every axis
 (`bcs_per_cre` 3-50k, `moi` 0.5-350, `minP` 0.003-2.0, `activity_max_mult`
 1-120; the other three axes were unchanged throughout). So union coverage
 strictly contains the earlier sweeps.
+
+## Test arms
+
+Every simulation is tested eight ways. All eight read the same counts, so the
+arms are exactly paired within a sample: any between-arm difference is
+attributable to the test, never to a difference in simulated data.
+
+| Arm | Test | Reporter |
+|---|---|---|
+| `mwu` / `mwu_deflated`               | Mann-Whitney U | present / absent |
+| `ttest` / `ttest_deflated`           | Welch's t      | present / absent |
+| `ks` / `ks_deflated`                 | two-sample KS  | present / absent |
+| `pseudobulk` / `pseudobulk_deflated` | Welch's t on per-replicate means | present / absent |
+
+`mwu` is the primary arm and the one the design-space figures use; Welch's t
+over-rejects on scMPRA counts by 2-3x. The other six ride along because they
+cost only a second pass over counts that already exist, whereas recovering
+them later would cost a full re-simulation -- the raw sims are pruned as the
+sweep goes and cannot be re-tested after the fact.
+
+### The reporter contrast
+
+A `_deflated` arm drops zero-count observations before testing. That is what a
+no-reporter experiment actually sees: the simulator emits one row per
+transfection event, so a zero in the raw counts is a transfected-but-silent
+event, and only a transfection reporter can tell that apart from a cell that
+was never transfected at all. Without the reporter those rows are not zeros in
+the data -- they are absent from it.
+
+A CRE that loses every observation to the drop yields a NaN p-value, which BH
+adjustment fills to 1.0. Such CREs therefore count as non-detections rather
+than disappearing from the denominator: `fc` comes from the ground truth, not
+from the test, so the row survives aggregation. This is the conservative
+treatment and the correct one -- a CRE you never observe is a CRE you cannot
+call. It is mildly *over*-conservative in one respect: the filled rows still
+occupy the BH denominator, whereas a real no-reporter experiment would never
+have tested them.
+
+Note that this contrast lives entirely at test time. It is a different (and
+much cheaper) question than the fit-time reporter evaluation sketched in
+`paper_plan.md`, which contrasts an obs-condition NB fit against a
+consider-missing + MOIB fit under Wald. Ortho fitting is not feasible at
+125,000 simulations, so the sweep answers the reporter question in the
+nonparametric frame only.
 
 ## Why a single independent union sweep (not a pooled set)
 
@@ -72,7 +120,32 @@ for any future re-aggregation with different metrics:
 `/nfs/roberts/project/pi_skr2/shared/tabula_data/simulated/synthetic_factorial_union_2026-05-16/union_cached_results.parquet`
 (338M; see the README there for schema + provenance).
 
-## Reproducing
+## Running the sweep
+
+The sweep is paced to run over weeks at low concurrency rather than saturating
+the cluster for a few days. 200 slices of ~25 samples each; every slice driver
+stands up one dask cluster and walks its samples serially, keeping worker
+submissions far below the YCRC 200/hr sbatch limit.
+
+```bash
+sbatch --array=0-199%20 wrap_union_slow.sh      # pace set by %N, nothing else
+ls <cache_root>/union/*.parquet | wc -l         # progress, out of 5000
+```
+
+Interrupting is free and resuming is automatic. A sample's cache is written
+only after all its reps and all eight arms are complete, and it is written to a
+temp name and renamed, so a driver killed mid-write cannot leave a truncated
+file that a later run would trust. Any sample with a cache is skipped for the
+price of one stat, so the array can be cancelled and resubmitted at any time --
+to change the pace, after a node failure, or after a 7-day timeout.
+
+Caches live on **project**, not scratch, because scratch purges files untouched
+for 30 days and a multi-week sweep would otherwise lose its early samples
+before its late ones finished. The raw sims stay on scratch and are deleted per
+sample as soon as that sample is cached, so peak disk scales with the number of
+samples in flight, not with the size of the sweep.
+
+## Reproducing the figures
 
 ```bash
 # Marginals + pairwise heatmap from the committed power summary (no re-sim):

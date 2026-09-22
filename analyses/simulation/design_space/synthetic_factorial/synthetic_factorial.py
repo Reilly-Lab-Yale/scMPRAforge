@@ -129,15 +129,32 @@ DEFAULT_SIM_ROOT = (
 SIM_ROOT: Path = DEFAULT_SIM_ROOT
 SAMPLES_PATH: Path = OUT / "samples.parquet"
 
+# Per-sample result caches live on project, not scratch. The sims themselves
+# are transient (written, tested, pruned within one sample) so scratch is right
+# for them, but the caches are the only surviving record of a sample and the
+# sweep is paced to run for weeks -- scratch purges anything untouched for 30
+# days, which would eat the early samples before the late ones finish. Each
+# cache is ~100 KB zstd, so 5000 of them cost well under a GB and 5000 inodes.
+# Override with envvar SYNTHETIC_FACTORIAL_CACHE_ROOT.
+DEFAULT_CACHE_ROOT = Path(
+    "/nfs/roberts/project/pi_skr2/shared/tabula_data/simulated"
+    "/synthetic_factorial_caches"
+)
+CACHE_ROOT: Path = DEFAULT_CACHE_ROOT
+
 
 def _apply_mode_paths(mode: str):
-    """Mode-suffixed sim and samples paths so different scales coexist."""
-    global SIM_ROOT, SAMPLES_PATH
+    """Mode-suffixed sim, cache and samples paths so different scales coexist."""
+    global SIM_ROOT, SAMPLES_PATH, CACHE_ROOT
     base = Path(os.environ.get("SYNTHETIC_FACTORIAL_SIM_ROOT", DEFAULT_SIM_ROOT))
     SIM_ROOT = base if mode == "full" else base.parent / f"{base.name}_{mode}"
     SIM_ROOT.mkdir(parents=True, exist_ok=True)
+    CACHE_ROOT = Path(os.environ.get("SYNTHETIC_FACTORIAL_CACHE_ROOT",
+                                     DEFAULT_CACHE_ROOT)) / mode
+    CACHE_ROOT.mkdir(parents=True, exist_ok=True)
     SAMPLES_PATH = OUT / (f"samples_{mode}.parquet" if mode != "full" else "samples.parquet")
     print(f"SIM_ROOT={SIM_ROOT}", flush=True)
+    print(f"CACHE_ROOT={CACHE_ROOT}", flush=True)
     print(f"SAMPLES_PATH={SAMPLES_PATH}", flush=True)
 
 # ---------------------------------------------------------------------------
@@ -145,6 +162,35 @@ def _apply_mode_paths(mode: str):
 # ---------------------------------------------------------------------------
 
 CELL_TYPE = "reference"
+
+# Hypothesis tests run on every simulation, as (arm directory, method,
+# has_reporter). Every arm reads the SAME simulated counts, so all arms are
+# exactly paired within a sample and the +reporter / deflated contrast for a
+# given test is a within-sample difference with no simulation confound.
+#
+# The deflated arms drop zero-count observations before testing, which is what
+# a no-reporter experiment actually sees on disc: the simulator writes one row
+# per transfection event, so its zeros are transfected-but-silent events that
+# only a transfection reporter could distinguish from non-transfection. CREs
+# that lose every observation return NaN p-values, which _bh_adjust fills to
+# 1.0; they count as non-detections rather than vanishing, because `fc` comes
+# from ground truth and survives the drop.
+#
+# MWU is the canonical test -- Welch's t-test over-rejects on these counts by
+# 2-3x. The other six arms are carried because they are nearly free once the
+# counts exist, and re-deriving them later would cost a full re-simulation.
+ARMS = [
+    ("mwu",                 "mwu",        True),
+    ("mwu_deflated",        "mwu",        False),
+    ("ttest",               "ttest",      True),
+    ("ttest_deflated",      "ttest",      False),
+    ("ks",                  "ks",         True),
+    ("ks_deflated",         "ks",         False),
+    ("pseudobulk",          "pseudobulk", True),
+    ("pseudobulk_deflated", "pseudobulk", False),
+]
+ARM_NAMES = [a for a, _, _ in ARMS]
+PRIMARY_ARM = "mwu"
 
 # (low, high, log_scale)
 AXIS_BOUNDS = {
@@ -232,7 +278,11 @@ MODES = {
     # limit (200/hr/user) with worker submissions. With 100 concurrent
     # array tasks x 5 workers each = 500 worker sbatches total over the
     # run, vs 100 x 50 = 5000 which hit the limit hard on 2026-05-11.
-    "union": dict(n_lhs=5000, n_library_reps=5, n_sims=5, n_workers=5,  worker_mem="128G", n_slices=50),
+    # n_slices=200 (not 50): the multi-arm sweep is paced to run for weeks at
+    # low array concurrency, and a slice must finish inside the 7-day partition
+    # limit even when only a handful run at a time. 25 samples per slice leaves
+    # headroom; concurrency is set by the array's %N, not here.
+    "union": dict(n_lhs=5000, n_library_reps=5, n_sims=5, n_workers=5,  worker_mem="128G", n_slices=200),
 }
 
 # Mutable globals -- set in main() based on chosen mode. Defaults match "full"
@@ -412,6 +462,9 @@ ANCHOR_DISPLAY = {
 INK, MUTED, HAIR = "#1a1a1a", "#666666", "#c9c9c9"
 # Scatter is background texture behind the smoother, not a series.
 DOT = "#c2c2c2"
+# The two transfection-reporter conditions. Okabe-Ito blue and vermillion;
+# validated as a categorical pair against a white page.
+WITH_C, WITHOUT_C = "#0072b2", "#d55e00"
 
 # Power is a magnitude on a fixed 0-1 scale, so the ramp is sequential and
 # single-hue. YlOrRd is what the Fig 3B power heatmaps already use for the
@@ -589,13 +642,27 @@ def _sample_dir(sample_id: str) -> Path:
     return SIM_ROOT / sample_id
 
 
-def _count_done(pt_dir: Path, test_type: str = "mwu") -> int:
+def _cache_path(sample_id: str) -> Path:
+    return CACHE_ROOT / f"{sample_id}.parquet"
+
+
+def _arm_done(sim_dir: Path, arm: str) -> bool:
+    tt_dir = sim_dir / "tests" / "hs_act" / arm
+    return tt_dir.exists() and any(tt_dir.iterdir())
+
+
+def _count_done(pt_dir: Path) -> int:
+    """Count reps that have results for EVERY arm.
+
+    A rep whose driver died partway through the arm loop is not counted, so it
+    is re-run from scratch rather than cached with a hole in it. The abandoned
+    directory is an orphan until _prune_sample removes the whole sample.
+    """
     n = 0
     for d in sorted(pt_dir.iterdir()) if pt_dir.exists() else []:
         if not d.is_dir():
             continue
-        tt_dir = d / "tests" / "hs_act" / test_type
-        if tt_dir.exists() and any(tt_dir.iterdir()):
+        if all(_arm_done(d, arm) for arm in ARM_NAMES):
             n += 1
     return n
 
@@ -610,11 +677,13 @@ def _run_one_sample(row: pd.Series, client) -> None:
     """
     sid = row["sample_id"]
     pt_dir = _sample_dir(sid)
-    # Skip if already cached + pruned: cached_results.parquet is the
-    # ground-truth marker that this sample's reps were all completed and
-    # the raw sim_<hash> dirs were collapsed. _count_done can't see that
-    # state because it looks for tests/hs_act/mwu which gets pruned.
-    if (pt_dir / "cached_results.parquet").exists():
+    # Skip if already cached + pruned: the cache is the ground-truth marker
+    # that this sample's reps were all completed and the raw sim_<hash> dirs
+    # were collapsed. _count_done can't see that state because it looks for
+    # tests/hs_act/<arm> directories which get pruned. This is also what makes
+    # resubmission safe -- a resubmitted array re-walks every sample and skips
+    # the finished ones for the price of one stat.
+    if _cache_path(sid).exists():
         print(f"SKIP   {sid} (cached)", flush=True)
         return
     pt_dir.mkdir(parents=True, exist_ok=True)
@@ -658,19 +727,27 @@ def _run_one_sample(row: pd.Series, client) -> None:
                 counts=example, reference_cre="reference"
             )
         sim.add_hypothesis_set("hs_act", hs)
-        sim.mwu("hs_act")
-        sim.save()
+        # save() per arm, not once at the end: it blocks on the test queue, so
+        # it caps in-flight test tasks at n_sims rather than n_sims x len(ARMS).
+        # Each task reads the whole count table, which in the heavy corner of
+        # the box is several GB -- letting all 8 arms queue at once would
+        # multiply peak worker memory by 8 and walk straight back into the
+        # 2026-05-10 OOM that set worker_mem=128G.
+        for arm, method, has_reporter in ARMS:
+            getattr(sim, method)("hs_act", has_reporter=has_reporter)
+            sim.save()
         del sim
         gc.collect()
 
     # Cache + prune inline. Scratch is tight (pi_skr2 group quota is 89%
     # full as of 2026-05-10), so each completed sample collapses its
-    # ~10-15 GB of raw sim dirs to a ~10 KB cached_results.parquet
-    # before the next sample starts. Without inline pruning peak disk
-    # would be n_samples x ~10 GB, which exceeds available scratch.
+    # ~10-15 GB of raw sim dirs to a ~100 KB cache before the next sample
+    # starts. Without inline pruning peak disk would be n_samples x ~10 GB,
+    # which exceeds available scratch. With it, disk is bounded by the number
+    # of samples in flight, not the number of samples in the sweep.
     if _cache_sample(pt_dir, sid, client):
         try:
-            freed = _prune_sample(pt_dir)
+            freed = _prune_sample(pt_dir, sid)
             print(f"DONE   {sid}  pruned {freed/1e9:.1f} GB", flush=True)
         except Exception as e:
             print(f"DONE   {sid}  prune skipped: {type(e).__name__}: {e}", flush=True)
@@ -779,18 +856,21 @@ def _power_metrics(cat: pd.DataFrame) -> dict:
 
 
 def _cache_sample(pt_dir: Path, sample_id: str, client,
-                   test_type: str = "mwu",
                    hypothesis_set: str = "hs_act") -> bool:
-    """Walk the sim_<hash> dirs of one sample, merge ground truth with
-    test results, and write a single <pt_dir>/cached_results.parquet.
+    """Walk the sim_<hash> dirs of one sample, merge ground truth with every
+    arm's test results, and write a single CACHE_ROOT/<sample_id>.parquet.
 
-    Columns: sample_id, sim_id, rep_idx, reject_null, fc,
+    Columns: sample_id, sim_id, rep_idx, arm, reject_null, fc,
              comparison_truth, reference_truth.
 
+    Only sim dirs holding results for every arm are cached, so a rep abandoned
+    partway through the arm loop cannot contribute a lopsided arm set that
+    would silently bias a between-arm comparison.
+
     No-op if the cache already exists. Returns True on success (cache
-    present afterward), False if no valid sim dirs were found.
+    present afterward), False if no complete sim dirs were found.
     """
-    cache_path = pt_dir / "cached_results.parquet"
+    cache_path = _cache_path(sample_id)
     if cache_path.exists():
         return True
     if not pt_dir.exists():
@@ -799,84 +879,89 @@ def _cache_sample(pt_dir: Path, sample_id: str, client,
     for d in sorted(pt_dir.iterdir()):
         if not d.is_dir():
             continue
-        res_dir = d / "tests" / hypothesis_set / test_type
-        if not (res_dir.exists() and any(res_dir.iterdir())):
+        if not all(_arm_done(d, arm) for arm in ARM_NAMES):
             continue
         try:
             sim = scm.de_novo_simulation(location=pt_dir, name=d.name, client=client)
             n_sims = sim.get_state_field("n_sims")
         except Exception:
             continue
-        for i in range(n_sims):
-            try:
-                m = sim._merge_in_ground_truth(
-                    hypothesis_set_name=hypothesis_set, test_type=test_type, index=i)
-            except Exception:
-                continue
-            m["sample_id"] = sample_id
-            m["sim_id"] = d.name
-            m["rep_idx"] = i
-            m["comparison_truth"] = m["comparison_truth"].astype(float)
-            m["reference_truth"] = m["reference_truth"].astype(float)
-            m["fc"] = m["comparison_truth"] / m["reference_truth"]
-            rows.append(m[["sample_id", "sim_id", "rep_idx",
-                            "reject_null", "fc",
-                            "comparison_truth", "reference_truth"]].copy())
+        for arm in ARM_NAMES:
+            for i in range(n_sims):
+                try:
+                    m = sim._merge_in_ground_truth(
+                        hypothesis_set_name=hypothesis_set, test_type=arm, index=i)
+                except Exception:
+                    continue
+                m["sample_id"] = sample_id
+                m["sim_id"] = d.name
+                m["rep_idx"] = i
+                m["arm"] = arm
+                m["comparison_truth"] = m["comparison_truth"].astype(float)
+                m["reference_truth"] = m["reference_truth"].astype(float)
+                m["fc"] = m["comparison_truth"] / m["reference_truth"]
+                rows.append(m[["sample_id", "sim_id", "rep_idx", "arm",
+                                "reject_null", "fc",
+                                "comparison_truth", "reference_truth"]].copy())
     if not rows:
         return False
-    pd.concat(rows, ignore_index=True).to_parquet(cache_path)
+    out = pd.concat(rows, ignore_index=True)
+    # Arms are paired by construction; an unbalanced cache means a merge or a
+    # result-file read silently dropped one, which would make any between-arm
+    # contrast an apples-to-oranges comparison.
+    per_arm = out.groupby("arm").size()
+    assert set(per_arm.index) == set(ARM_NAMES), (
+        f"{sample_id}: cached arms {sorted(per_arm.index)} != {sorted(ARM_NAMES)}")
+    assert per_arm.nunique() == 1, (
+        f"{sample_id}: unbalanced arms {per_arm.to_dict()}")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    # Write to a temp name and rename: the cache doubles as the "sample is
+    # finished" marker, so a driver killed mid-write must not leave a
+    # truncated file that later runs would trust and skip.
+    tmp_path = cache_path.with_suffix(".parquet.tmp")
+    out.to_parquet(tmp_path, compression="zstd")
+    tmp_path.replace(cache_path)
     return True
 
 
-def _prune_sample(pt_dir: Path) -> int:
-    """Delete everything in pt_dir except cached_results.parquet.
+def _prune_sample(pt_dir: Path, sample_id: str) -> int:
+    """Delete the sample's raw sim tree once its cache is on project.
 
     Refuses to prune if no cache exists -- the cache is the only thing
     that lets _aggregate run later. Returns approximate bytes freed.
     """
-    cache_path = pt_dir / "cached_results.parquet"
-    if not cache_path.exists():
-        raise RuntimeError(f"refusing to prune {pt_dir}: no cached_results.parquet")
+    if not _cache_path(sample_id).exists():
+        raise RuntimeError(
+            f"refusing to prune {pt_dir}: no cache at {_cache_path(sample_id)}")
     freed = 0
-    for item in pt_dir.iterdir():
-        if item.name == "cached_results.parquet":
-            continue
-        if item.is_dir():
-            for root, _, files in os.walk(item):
-                for f in files:
-                    try:
-                        freed += os.path.getsize(os.path.join(root, f))
-                    except OSError:
-                        pass
-            shutil.rmtree(item, ignore_errors=True)
-        else:
+    for root, _, files in os.walk(pt_dir):
+        for f in files:
             try:
-                freed += item.stat().st_size
+                freed += os.path.getsize(os.path.join(root, f))
             except OSError:
                 pass
-            try:
-                item.unlink()
-            except OSError:
-                pass
+    shutil.rmtree(pt_dir, ignore_errors=True)
     return freed
 
 
-def _aggregate(samples: pd.DataFrame, client, test_type: str = "mwu") -> pd.DataFrame:
-    """Walk scratch, per sample compute several power summaries, return one
-    row per sample.
+def _aggregate(samples: pd.DataFrame, client, arm: str = PRIMARY_ARM) -> pd.DataFrame:
+    """Per sample, compute several power summaries for one arm; return one row
+    per sample.
 
-    Prefers <pt_dir>/cached_results.parquet (cheap read) when present;
-    falls back to walking the sim_<hash> dirs for samples that haven't
+    Prefers CACHE_ROOT/<sample_id>.parquet (cheap read) when present; falls
+    back to walking the sim_<hash> dirs on scratch for samples that haven't
     been cached + pruned yet.
     """
+    if arm not in ARM_NAMES:
+        raise ValueError(f"Unknown arm {arm!r}; pick one of {ARM_NAMES}")
     rows = []
     skipped = 0
     for _, row in samples.iterrows():
         sid = row["sample_id"]
         pt_dir = _sample_dir(sid)
-        if not pt_dir.exists():
+        cache_path = _cache_path(sid)
+        if not (cache_path.exists() or pt_dir.exists()):
             continue
-        cache_path = pt_dir / "cached_results.parquet"
         if cache_path.exists():
             try:
                 cat = pd.read_parquet(cache_path)
@@ -887,12 +972,17 @@ def _aggregate(samples: pd.DataFrame, client, test_type: str = "mwu") -> pd.Data
             if "reject_null" not in cat.columns or "fc" not in cat.columns:
                 skipped += 1
                 continue
+            cat = cat[cat["arm"] == arm]
+            if len(cat) == 0:
+                skipped += 1
+                print(f"  skip {sid}: no rows for arm {arm}", flush=True)
+                continue
             cat = cat[["reject_null", "fc"]].dropna(subset=["fc"])
         else:
             sim_dirs = [d for d in sorted(pt_dir.iterdir()) if d.is_dir()]
             per_sample = []
             for d in sim_dirs:
-                res_dir = d / "tests" / "hs_act" / test_type
+                res_dir = d / "tests" / "hs_act" / arm
                 if not (res_dir.exists() and any(res_dir.iterdir())):
                     continue
                 required = [
@@ -908,7 +998,7 @@ def _aggregate(samples: pd.DataFrame, client, test_type: str = "mwu") -> pd.Data
                     reps = sim.get_state_field("n_sims")
                     for i in range(reps):
                         mergy = sim._merge_in_ground_truth(
-                            hypothesis_set_name="hs_act", test_type=test_type, index=i
+                            hypothesis_set_name="hs_act", test_type=arm, index=i
                         )
                         mergy["comparison_truth"] = mergy["comparison_truth"].astype(float)
                         mergy["reference_truth"] = mergy["reference_truth"].astype(float)
@@ -935,18 +1025,30 @@ def _aggregate(samples: pd.DataFrame, client, test_type: str = "mwu") -> pd.Data
 _LOESS_CACHE: dict = {}
 
 
-def _loess_band(x, y, n_grid=100, frac=0.4, n_boot=200, seed=42):
+def _loess_band(x, y, n_grid=100, frac=0.4, n_boot=200, seed=42, it=0):
     """LOESS-like smoother via locally-weighted linear regression with
-    bootstrap 95% bands. Returns (xg, yhat, lo, hi)."""
+    bootstrap 95% bands. Returns (xg, yhat, lo, hi).
+
+    it=0 disables lowess's robustifying iterations, which default to 3. Those
+    iterations reweight points by a bisquare on their residual, scaled by a
+    SINGLE GLOBAL median |residual|. These curves are conditional means of
+    quantities whose spread changes several-fold along the axis, so that one
+    global scale is calibrated to the tight end and treats the honest spread
+    at the wide end as outliers. Because the wide end is also right-skewed,
+    the downweighting is one-sided and each iteration shaves the top of the
+    distribution: on the reporter-benefit curve it reported 0.137 where the
+    local mean is 0.313.
+    """
     from statsmodels.nonparametric.smoothers_lowess import lowess
     xg = np.linspace(np.min(x), np.max(x), n_grid)
-    yhat = lowess(y, x, frac=frac, xvals=xg, return_sorted=False)
+    yhat = lowess(y, x, frac=frac, it=it, xvals=xg, return_sorted=False)
     rng = np.random.default_rng(seed)
     boots = np.empty((n_boot, n_grid))
     for b in range(n_boot):
         idx = rng.integers(0, len(x), size=len(x))
         try:
-            boots[b] = lowess(y[idx], x[idx], frac=frac, xvals=xg, return_sorted=False)
+            boots[b] = lowess(y[idx], x[idx], frac=frac, it=it, xvals=xg,
+                              return_sorted=False)
         except Exception:
             boots[b] = np.nan
     lo = np.nanpercentile(boots, 2.5, axis=0)
@@ -1052,11 +1154,20 @@ def _draw_anchor_rules(ax, axis: str, anchors: list, data_lo: float,
     return placed
 
 
-def _draw_anchor_key(fig, rect, anchors: list):
+def _draw_anchor_key(fig, rect, anchors: list, show_arms: bool = False):
     """Name the dashed rules, in the grid slot the seven axes leave empty."""
     x = rect[0] + 0.01
     y = rect[1] + rect[3] - 0.02
     dy = 0.115 / MARG_FIG_H
+    if show_arms:
+        for k, (lab, colour) in enumerate((("with transfection reporter", WITH_C),
+                                           ("without", WITHOUT_C))):
+            yk = y - k * dy
+            fig.add_artist(plt.Line2D([x, x + 0.10 / MARG_FIG_W], [yk] * 2,
+                                      color=colour, lw=1.3))
+            fig.text(x + 0.13 / MARG_FIG_W, yk, lab, fontsize=7, color=INK,
+                     ha="left", va="center")
+        y -= 2.6 * dy
     fig.text(x, y, "published designs", fontsize=7, color=INK,
              ha="left", va="top")
     for k, name in enumerate(anchors):
@@ -1076,7 +1187,8 @@ def _plot_marginals_for_metric(df: pd.DataFrame, metric: str, ylim: "tuple[float
                                 hline: "float | None" = None,
                                 invert_y: bool = False,
                                 force_linear_x: bool = False,
-                                anchors: "list[str] | None" = None):
+                                anchors: "list[str] | None" = None,
+                                arms: "pd.DataFrame | None" = None):
     """Render the 7-axis marginals figure for a chosen power metric column.
 
     One panel per design axis: the sampled designs as a light scatter, the
@@ -1122,8 +1234,21 @@ def _plot_marginals_for_metric(df: pd.DataFrame, metric: str, ylim: "tuple[float
         display_log = log_scale and not force_linear_x
         x_smooth = np.log10(x) if log_scale else x
 
-        ax.scatter(x, y, s=1.2, alpha=0.32, color=DOT, linewidths=0,
-                   zorder=1, rasterized=True)
+        # With both reporter conditions the scatter is drawn per arm in that
+        # arm's hue: showing it for only one would read as the other curve
+        # having no data behind it.
+        if arms is None:
+            series = [(None, y, DOT, INK)]
+        else:
+            series = [("mwu", arms["mwu"].values, WITH_C, WITH_C),
+                      ("mwu_deflated", arms["mwu_deflated"].values,
+                       WITHOUT_C, WITHOUT_C)]
+        for _, ys, dot_c, _ in series:
+            # Two arms put twice the points on one panel, so the per-point
+            # alpha comes down to keep the wash from swallowing the anchor
+            # rules and the smoothers drawn over it.
+            ax.scatter(x, ys, s=1.2, alpha=0.12 if arms is not None else 0.32,
+                       color=dot_c, linewidths=0, zorder=1, rasterized=True)
 
         # Limits before the anchors, which need them to lay their tags out,
         # and computed from the data rather than read back off the axes: at
@@ -1164,20 +1289,22 @@ def _plot_marginals_for_metric(df: pd.DataFrame, metric: str, ylim: "tuple[float
                 # this cache the same curve is recomputed once per variant --
                 # 210 fits where 35 suffice, about an hour of the run.
                 # _loess_band is seeded, so caching cannot change the output.
-                ck = (metric, axis)
-                if ck not in _LOESS_CACHE:
-                    _LOESS_CACHE[ck] = _loess_band(x_smooth[valid], y[valid])
-                xg, yhat, lo, hi = _LOESS_CACHE[ck]
-                xg_disp = (10.0 ** xg) if log_scale else xg
-                ax.fill_between(xg_disp, lo, hi, color=INK, alpha=0.16, lw=0,
-                                zorder=4)
-                # Cased in white so the curve stays legible where it crosses
-                # the densest part of the scatter.
-                ax.plot(xg_disp, yhat, color=INK, lw=1.3, zorder=5,
-                        solid_capstyle="round",
-                        path_effects=[pe.Stroke(linewidth=2.8,
-                                                foreground="white"),
-                                      pe.Normal()])
+                for arm_name, ys, _, line_c in series:
+                    v = valid & np.isfinite(ys)
+                    ck = (metric, axis, arm_name)
+                    if ck not in _LOESS_CACHE:
+                        _LOESS_CACHE[ck] = _loess_band(x_smooth[v], ys[v])
+                    xg, yhat, lo, hi = _LOESS_CACHE[ck]
+                    xg_disp = (10.0 ** xg) if log_scale else xg
+                    ax.fill_between(xg_disp, lo, hi, color=line_c, alpha=0.16,
+                                    lw=0, zorder=4)
+                    # Cased in white so the curve stays legible where it
+                    # crosses the densest part of the scatter.
+                    ax.plot(xg_disp, yhat, color=line_c, lw=1.3, zorder=5,
+                            solid_capstyle="round",
+                            path_effects=[pe.Stroke(linewidth=2.8,
+                                                    foreground="white"),
+                                          pe.Normal()])
             except Exception as e:
                 print(f"  smoother failed for {axis}/{metric}: {e}", flush=True)
 
@@ -1187,7 +1314,8 @@ def _plot_marginals_for_metric(df: pd.DataFrame, metric: str, ylim: "tuple[float
         ax.set_xlabel(axis_label(axis), color=INK, labelpad=2)
         _style_marg_axes(ax, show_yticks=(ax_i % MARG_NCOL == 0))
 
-    _draw_anchor_key(fig, _marg_rect(len(AXIS_NAMES)), anchors)
+    _draw_anchor_key(fig, _marg_rect(len(AXIS_NAMES)), anchors,
+                     show_arms=arms is not None)
 
     # captioned=False for the manuscript panel: its figure legend says what
     # this is, and a title repeating the legend is wasted space. The
@@ -1224,9 +1352,14 @@ METRIC_SPECS = [
      "_p3", "Power at 3x against each design axis"),
     ("power_auc_1to3", (0, 1), "mean power, fold change 1-3x", None, False,
      "_auc", "Mean power against each design axis"),
-    ("fc_at_p50",      None,   "fold change at 50% power", None, True,
-     "_fc50", "Minimum detectable fold change against each design axis"),
 ]
+
+# fc_at_p50 is computed per sample but deliberately not plotted. It is the
+# smallest FC at which smoothed power crosses 0.5, so it is undefined for any
+# design that never reaches 50% power and unbounded for those that only just
+# do. That makes it heavy-tailed and wildly heteroscedastic across the design
+# space -- a poor summary of a power surface, and the metric on which a
+# smoother's robustness weighting does the most damage. Use power_auc_1to3.
 
 # published: the three assays the manuscript reports on, which is the variant
 # its figures use. The takeshi variants predate Yin et al. being available as
@@ -1248,13 +1381,29 @@ def _marginals_subtitle(df: pd.DataFrame) -> str:
 
 
 def _plot_manuscript_marginals(df: pd.DataFrame, suffix: str):
-    """Fig 5B only: the AUC metric with the three published designs overlaid."""
+    """Fig 5B only: the AUC metric, both reporter conditions, published
+    designs overlaid.
+
+    The reporter is a paired within-sample arm rather than a hypercube axis --
+    both arms read the same simulated counts -- so the two curves differ only
+    by the reporter, and the vertical gap between them is what it buys at that
+    point in the design space.
+    """
     metric, ylim, ylabel, hline, invert, fsuf, title = next(
         s for s in METRIC_SPECS if s[0] == MANUSCRIPT_METRIC)
     anchors = dict(ANCHOR_VARIANTS)[MANUSCRIPT_ANCHORS]
+    arms_path = OUT / f"samples_power{suffix}_arms.parquet"
+    arms = None
+    if arms_path.is_file():
+        a = pd.read_parquet(arms_path)
+        wide = a.pivot_table(index="sample_id", columns="arm", values=metric)
+        # Align to df's row order; a sample missing either arm drops out of
+        # both curves rather than shifting one of them.
+        arms = wide.reindex(df["sample_id"].values)
+        assert len(arms) == len(df), f"{len(arms)} arm rows for {len(df)} samples"
     _plot_marginals_for_metric(
         df, metric=metric, ylim=ylim, ylabel=ylabel, title=title,
-        subtitle=_marginals_subtitle(df), captioned=False,
+        subtitle=_marginals_subtitle(df), captioned=False, arms=arms,
         hline=hline, invert_y=invert, anchors=anchors,
         out_path=OUT / f"marginals{fsuf}{suffix}{MANUSCRIPT_ANCHORS}.svg")
 
@@ -1575,19 +1724,70 @@ def _make_slurm_client():
             "-p priority",
             "--account=prio_skr2",
             "--job-name=synfac_worker",
-            "--time=8:00:00",
-            "--output=worker_%j.out",
+            # Must outlast a whole slice. A slice is 25 samples at ~2/hr, so
+            # ~12h typical and longer through the heavy corner of the box --
+            # well past the old 8:00:00. When workers hit their walltime
+            # mid-slice, scale() does not get them back and every remaining
+            # sample in that slice dies "TimeoutError: No valid workers found"
+            # (21 samples lost this way on 2026-08-19; slices finishing under
+            # 8h were untouched, those running over it were not).
+            "--time=3-00:00:00",
+            # logs/ not cwd: a weeks-long array is ~1000 worker jobs, and the
+            # 2026-05 run left 24k mixed log files loose in this directory,
+            # which was enough to defeat runstats.
+            "--output=logs/worker_%j.out",
         ],
     )
-    # Use adapt(minimum, maximum) instead of scale(jobs=N) so worker sbatches
-    # are issued gradually as work appears, rather than burst-submitting all
-    # N at once. Burst submission of 10 slices x 50 workers triggered the
-    # YCRC per-hour sbatch rate limit on 2026-05-05, leaving 6 of 10 slices
-    # with zero workers ("No valid workers found" failures). Adaptive scaling
-    # spreads submissions and avoids the cliff.
-    cluster.adapt(minimum=1, maximum=N_WORKERS, interval="30s")
+    # scale(), not adapt(). Both can trip the YCRC 200/hr sbatch limit, but by
+    # opposite routes, and which one bites depends on N_WORKERS.
+    #
+    # adapt(1, N) was chosen when N_WORKERS was 50, to avoid burst-submitting
+    # 10 slices x 50 workers at once (that burst cost 6 of 10 slices on
+    # 2026-05-05). With N_WORKERS now 5 there is no burst worth avoiding -- but
+    # adapt churns instead: between samples the driver caches and prunes
+    # serially, dask sees an idle cluster and scales to the minimum, then
+    # resubmits for the next sample. Measured 2026-08-18 across 10 slices:
+    # 142 worker sbatches in 28 min = 304/hr, over the limit purely in churn.
+    # (Count by Submit time -- `sacct -S` returns jobs *alive during* a window,
+    # not submitted in it, and will happily re-count the same live workers.)
+    #
+    # scale() holds N_WORKERS for the worker walltime, so submissions happen
+    # once per slice per 8h wave: 50 at startup then 0/hr until turnover. The
+    # startup burst is one worker per slice-slot, so keep concurrency x
+    # N_WORKERS under ~200 when choosing the array's %N -- past that, submit
+    # the array in two batches so the first hour does not spike.
+    cluster.scale(N_WORKERS)
     client = Client(cluster, timeout="600s", heartbeat_interval="20s")
     print(f"Dask dashboard: {client.dashboard_link}", flush=True)
+    # Block until Slurm actually schedules a worker. Without this the driver
+    # starts submitting immediately and dask raises "No valid workers found"
+    # on an empty cluster, burning the first samples of the slice -- 5 lost
+    # across slices 73/74 on 2026-08-21, which started at 00:21 and 00:35 when
+    # the queue was slow. Distinct from the 8h-walltime bug: that one killed
+    # the TAIL of a slice, this one kills the HEAD and then self-heals.
+    #
+    # Failure here is not fatal on purpose. Timing out and letting the slice
+    # proceed reproduces today's behaviour (lose a few samples to the mop-up);
+    # raising would abort the driver and forfeit all 25.
+    # 6h, sized to stop chasing the tail rather than to match it. Observed
+    # worker queue waits: seconds normally, but 21 min, 54 min and 173 min in
+    # three post-midnight congestion windows -- each successively blowing
+    # through a timeout picked to cover the previous one (30 min, then 2h).
+    #
+    # The pending Reason is (Priority), not (Resources): the workers are
+    # queued behind other users' jobs, not blocked on our 128G ask, and our
+    # FairShare is 0.89. So the delay is other people's load and there is
+    # nothing to out-muscle -- the only sane response is to outwait it.
+    #
+    # A slice has 72h of walltime for ~12h of work, so even a 6h wait leaves
+    # ample margin, and waiting costs nothing next to failing samples. If
+    # workers genuinely never arrive we are no worse off than failing fast:
+    # the samples go to the mop-up pass either way.
+    try:
+        client.wait_for_workers(1, timeout="21600s")
+    except Exception as e:
+        print(f"WARN: no workers after 6 h ({type(e).__name__}: {e}); "
+              f"starting anyway", flush=True)
     return cluster, client
 
 
@@ -1647,13 +1847,20 @@ def write_anchor(mode: str):
         seed=SEED,
         axis_bounds={k: list(v) for k, v in AXIS_BOUNDS.items()},
         cell_type=CELL_TYPE,
+        arms=ARM_NAMES,
+        primary_arm=PRIMARY_ARM,
         sim_root=str(SIM_ROOT),
+        cache_root=str(CACHE_ROOT),
         empirical=EMPIRICAL,
         sim_date=SIM_DATE,
     )
     out_path = OUT / (f"anchor_{mode}.json" if mode != "full" else "anchor.json")
-    with open(out_path, "w") as f:
+    # Write-then-rename: every array task rewrites this same path, so a plain
+    # open("w") lets 200 concurrent writers leave a torn file behind.
+    tmp_path = out_path.with_suffix(f".json.{os.getpid()}.tmp")
+    with open(tmp_path, "w") as f:
         json.dump(meta, f, indent=2, default=str)
+    tmp_path.replace(out_path)
 
 
 # ---------------------------------------------------------------------------
@@ -1697,9 +1904,9 @@ if __name__ == "__main__":
 
     if phase == "cache_prune":
         # Backfill cache + prune for samples in this mode's table. For each
-        # sample with valid sim dirs but no cached_results.parquet, build
-        # the cache then rm -rf the raw sim_<hash> contents. Existing
-        # caches and missing samples are skipped silently.
+        # sample with complete sim dirs but no cache, build the cache then
+        # rm -rf the raw sim_<hash> tree. Existing caches and missing samples
+        # are skipped silently.
         # Optional slice args (positional 3,4) partition the samples table
         # the same way phase_simulate does, so cache_prune can be sbatched
         # in parallel across slices. Default is one slice = all samples,
@@ -1721,17 +1928,16 @@ if __name__ == "__main__":
                 if not pt_dir.exists():
                     n_skipped += 1
                     continue
-                cache_path = pt_dir / "cached_results.parquet"
-                already_cached = cache_path.exists()
+                already_cached = _cache_path(sid).exists()
                 ok = _cache_sample(pt_dir, sid, client)
                 if not ok:
                     n_skipped += 1
-                    print(f"  {sid}: no valid sim dirs; skipping", flush=True)
+                    print(f"  {sid}: no complete sim dirs; skipping", flush=True)
                     continue
                 if not already_cached:
                     n_cached += 1
                 try:
-                    freed = _prune_sample(pt_dir)
+                    freed = _prune_sample(pt_dir, sid)
                     total_freed += freed
                     n_pruned += 1
                     print(f"  {sid}: {'cached + ' if not already_cached else ''}"
@@ -1761,7 +1967,7 @@ if __name__ == "__main__":
         print(f"\n{'='*60}\nPhase: plot ({mode})\n{'='*60}", flush=True)
         cluster, client = _make_local_client()
         try:
-            df_pow = _aggregate(samples, client, test_type="mwu")
+            df_pow = _aggregate(samples, client, arm=PRIMARY_ARM)
             phase_plot(df_pow, mode)
         finally:
             client.close(); cluster.close()

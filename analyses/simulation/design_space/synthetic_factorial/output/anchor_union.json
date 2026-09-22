@@ -44,7 +44,19 @@
     ]
   },
   "cell_type": "reference",
-  "sim_root": "/nfs/roberts/scratch/pi_skr2/mcn26/synthetic_factorial_sims/2026-05-05_synthetic_factorial_union",
+  "arms": [
+    "mwu",
+    "mwu_deflated",
+    "ttest",
+    "ttest_deflated",
+    "ks",
+    "ks_deflated",
+    "pseudobulk",
+    "pseudobulk_deflated"
+  ],
+  "primary_arm": "mwu",
+  "sim_root": "/nfs/roberts/scratch/pi_skr2/mcn26/synthetic_factorial_sims/2026-08-18_synthetic_factorial_arms_union",
+  "cache_root": "/nfs/roberts/project/pi_skr2/shared/tabula_data/simulated/synthetic_factorial_caches/union",
   "empirical": {
     "shendure-Pluripotent": {
       "n_cells": 8201,
