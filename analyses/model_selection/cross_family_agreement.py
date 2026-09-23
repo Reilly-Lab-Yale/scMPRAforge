@@ -285,9 +285,12 @@ def manuscript_panel(rows):
     med = [100 * r["rel"].median() for r in canon]
     p95 = [100 * r["rel"].quantile(0.95) for r in canon]
 
-    ax.barh(y, med, height=0.6, color=[r["colour"] for r in canon], zorder=3)
-    ax.hlines(y, med, p95, color=INK, lw=1.0, zorder=4)
-    ax.vlines(p95, y - 0.16, y + 0.16, color=INK, lw=1.0, zorder=4)
+    cols = [r["colour"] for r in canon]
+    ax.barh(y, med, height=0.6, color=cols, edgecolor=cols, alpha=0.55,
+            lw=0.9, zorder=3)
+    for i, c in enumerate(cols):
+        ax.hlines(i, med[i], p95[i], color=c, lw=0.9, zorder=4)
+        ax.vlines(p95[i], i - 0.16, i + 0.16, color=c, lw=0.9, zorder=4)
     for i, r in enumerate(canon):
         ax.text(p95[i] * 1.06, i, f"n={len(r['rel']):,}", va="center",
                 fontsize=7, color=MUTED)
