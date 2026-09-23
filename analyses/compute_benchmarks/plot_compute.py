@@ -16,8 +16,10 @@ Two regimes are distinguished in the scatter:
   - phantom-zero (cm expansion): a phantom zero per unobserved (cell,
     barcode) pair -> high memory.
 
-All logged fits ran on 4 CPU cores (no GPU); the accelerator axis is not
-covered by these logs and is intentionally omitted.
+All logged fits ran on 4 CPU cores of an Intel Xeon 8562Y+ (Emerald Rapids)
+node, no GPU; the accelerator axis is not covered by these logs and is
+intentionally omitted. Matching the CPU generation matters: it is what makes
+the three bars comparable as wall times rather than as three machines.
 """
 import re
 import csv
@@ -42,7 +44,13 @@ REPORTER_EXPANSIONS = {"obs", "obsingle"}  # phantom-zero is "cm"
 CANONICAL = {
     "shendure": "shendure_obs_nb",
     "cohen": "cohen_obsingle_nb_phantom",
-    "seelig": "seelig_cm_moib_nb_phantom",
+    # The original seelig fit ran on AMD Turin while the other two ran on Intel
+    # Emerald Rapids, so its wall time was not comparable to theirs. This is a
+    # re-run of the same fit on Emerald Rapids (job 27244382); the parameters
+    # were discarded, only the accounting record is used. It came out 8.7%
+    # faster and 6.3% lighter than the Turin run, so the architecture was never
+    # the story -- the phantom-zero regime is.
+    "seelig": "seelig_moib_emeraldrapids_bench",
 }
 # No substituting a different fit when the canonical one has no SLURM log:
 # "canonical" is a statement about fit quality, so a stand-in would put the
