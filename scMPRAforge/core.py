@@ -13,6 +13,7 @@ import numpy as np
 import logging
 import time
 import pickle
+import shutil
 from pathlib import Path
 import copy
 
@@ -204,6 +205,10 @@ MPRA_UMIWISE_COLUMN_ORDER = [
     "reads_transfection_bc",
     "reads_DNA",
 ]
+
+# added by scMPRA_data itself: cre_id_original keeps each negative control's
+# name once set_negative_controls has relabelled it "reference"
+MPRA_DERIVED_COLUMNS = {"cre_id_original"}
 
 MPRA_FACTOR_COLUMNS = {
     "cell_bc",
@@ -1747,13 +1752,21 @@ class scMPRA_data:
 
         with open(base / "members.json", "r") as f:
             meta_dict = json.load(f)
+        # members JSON cannot hold (DataFrames in operations, the coarse
+        # reporter table) are pickled beside it; absent in older saves
+        if (base / "members.pkl").exists():
+            with open(base / "members.pkl", "rb") as f:
+                meta_dict.update(pickle.load(f))
         for k, v in meta_dict.items():
             setattr(ret, k, v)
         ret._ensure_consider_missing_defaults()
 
-        ret.table_type = _strict_mpra_table_type(ret.data.columns)
+        # columns the package adds itself are not part of the input contract
+        ret.table_type = _strict_mpra_table_type(
+            [c for c in ret.data.columns if c not in MPRA_DERIVED_COLUMNS])
         assert ret.table_type in {"mpra_readwise", "mpra_umiwise"}, "Malformed table."
-        ret.source = str(path)
+        if not ret.source:
+            ret.source = str(path)
 
         return ret
 
@@ -1773,14 +1786,32 @@ class scMPRA_data:
             keep = [c for c in MPRA_UMIWISE_COLUMN_ORDER if c in ddf.columns]
         else:
             raise ValueError(f"Unsupported table_type for parquet save: {self.table_type}")
+        # standard columns first, then any others (cre_id_original records
+        # which negative control a pooled "reference" row came from)
+        keep += [c for c in ddf.columns if c not in keep]
         ddf = ddf[keep]
         meta = _densify_sparse_partition(ddf._meta)
         ddf = ddf.map_partitions(_densify_sparse_partition, meta=meta)
         ddf.to_parquet(base / "data.parquet", engine="pyarrow", compression="gzip", write_index=False, overwrite=True)
 
         nondata = {key: val for key, val in self.__dict__.items() if key not in {"data", "_consider_missing_cache"}}
+        # a member goes to JSON only if it survives the round trip unchanged;
+        # anything else (a DataFrame, a tuple) is pickled rather than str()-ed
+        def _json_exact(v):
+            try:
+                return json.loads(json.dumps(v)) == v
+            except (TypeError, ValueError):
+                return False
+        plain = {k: v for k, v in nondata.items() if _json_exact(v)}
+        other = {k: v for k, v in nondata.items() if k not in plain}
         with open(base / "members.json", "w") as f:
-            json.dump(nondata, f, default=str)
+            json.dump(plain, f)
+        pkl = base / "members.pkl"
+        if other:
+            with open(pkl, "wb") as f:
+                pickle.dump(other, f)
+        elif pkl.exists():
+            pkl.unlink()
   
     def graph_chimeric(self, *args, **kwargs):
         """
@@ -3115,14 +3146,26 @@ class ortho:
             return  # same fit, one direction finished after midnight
         self.meta = rec
 
-    def save(self,path,name,client=None,strip_training_data=False):
+    def save(self,path,name,client=None,strip_training_data=False,training_data="pointer"):
         """
         Simple pickle save.
 
         Will block & wait for results if not done computing
 
         creates directory 'name' in 'path'
+
+        training_data selects how the training data is kept:
+          "pointer" - pickle it as is. A lazy table pickles as its task graph,
+                      which reads the source file by absolute path and byte
+                      offset: small, but only valid while that file is
+                      unchanged and at that path.
+          "flat"    - materialize it into training_data.scmpra/ inside the
+                      ortho, so the ortho is self-contained.
+          "strip"   - omit it. strip_training_data=True is the same.
         """
+        if strip_training_data:
+            training_data = "strip"
+        assert training_data in {"pointer", "flat", "strip"}, f"unknown training_data mode {training_data!r}"
         #There are much nicer ways to structure this, but that level of effort
         #should be saved for non-pickle save/load
         full_path=Path(path)/name
@@ -3186,10 +3229,17 @@ class ortho:
             self.wald_precomp.save(full_path/"wald_precomp.pkl")
 
         ## training data
-        if not strip_training_data:
-            simple_write(self.training_data,"training_data.pkl")
+        # load() prefers training_data.scmpra/ over training_data.pkl, so each
+        # mode removes the other's file rather than leave a stale one behind
+        flat_dir = full_path/"training_data.scmpra"
+        if training_data == "flat" and self.training_data is not None:
+            self.training_data.to_parquet(flat_dir)
+            (full_path/"training_data.pkl").unlink(missing_ok=True)
         else:
-            simple_write(None,"training_data.pkl")
+            simple_write(self.training_data if training_data == "pointer" else None,
+                         "training_data.pkl")
+            if flat_dir.is_dir():
+                shutil.rmtree(flat_dir)
 
         ## what this fit modelled, and how (see ortho_meta)
         # Only a fit knows its own settings; an ortho that was loaded and
@@ -3247,10 +3297,14 @@ class ortho:
         else:
             ret_ortho.by_cell_type_design = None
 
-        ## Training data
-        try:
+        ## Training data: a flat copy inside the ortho if there is one, else
+        ## the pickle (a pointer to the source file in orthos saved that way)
+        flat_dir = full_path.resolve()/"training_data.scmpra"
+        if flat_dir.is_dir():
+            ret_ortho.training_data=scMPRA_data.from_parquet(flat_dir)
+        elif (full_path/"training_data.pkl").exists():
             ret_ortho.training_data=simple_load("training_data.pkl")
-        except FileNotFoundError:
+        else:
             import warnings
             warnings.warn("training_data.pkl not found — training_data will be None. "
                           "Pass dat= explicitly to recompute_design_matrices.")
