@@ -1296,9 +1296,6 @@ SEELIG_CM_MOIB_NB_BOUNDS=Bounds.from_tgz(working_dir/"presets/seelig_cm_moib_nb_
 SEELIG_CM_MOIB_ZINB_BOUNDS=Bounds.from_tgz(working_dir/"presets/seelig_cm_moib_zinb_phantom.tgz")
 SEELIG_BOUNDS=SEELIG_CM_MOIB_NB_BOUNDS
 
-TAKESHI_OBS_NB_BOUNDS=Bounds.from_tgz(working_dir/"presets/takeshi_obs_nb.tgz")
-# No canonical alias for takeshi yet.
-# TAKESHI_BOUNDS=TAKESHI_OBS_NB_BOUNDS
 
 class scMPRA_data:
     """
