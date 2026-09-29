@@ -390,13 +390,13 @@ EMPIRICAL = {
 # delivered per cell (see make_synthetic_bounds -> set_effective_moi), so the
 # gloss names the count rather than repeating the acronym.
 AXIS_DISPLAY = {
-    "minP": "basal expression",
+    "minP": "negative-control baseline",
     "lib_alpha_nb": "library skew (NB alpha)",
     "bcs_per_cre": "barcodes per element",
     "n_cres": "elements",
     "n_cells": "cells",
     "moi": "MOI (constructs per cell)",
-    "activity_max_mult": "dynamic range (max / basal)",
+    "activity_max_mult": "dynamic range (max / baseline)",
 }
 
 # Short forms for the heatmap grids, where an axis label is rotated into a
@@ -407,7 +407,7 @@ AXIS_DISPLAY_SHORT = {
     "lib_alpha_nb": "library skew",
     "bcs_per_cre": "barcodes\nper element",
     "moi": "MOI",
-    "minP": "basal\nexpression",
+    "minP": "neg.-control\nbaseline",
     "activity_max_mult": "dynamic\nrange",
 }
 
