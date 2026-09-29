@@ -391,7 +391,7 @@ EMPIRICAL = {
 # gloss names the count rather than repeating the acronym.
 AXIS_DISPLAY = {
     "minP": "negative-control baseline",
-    "lib_alpha_nb": "library skew (NB alpha)",
+    "lib_alpha_nb": r"library skew ($\sigma$)",
     "bcs_per_cre": "barcodes per element",
     "n_cres": "elements",
     "n_cells": "cells",
