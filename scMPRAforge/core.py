@@ -926,8 +926,8 @@ class simple_count:
             shrink=0.9,
             ax=ax,
         )
-        ax.plot(x_nb, y_nb, marker='o', linestyle='-', label=f'NB fit (μ={self.mu_nb:.2f}, α={self.alpha_nb:.3f})')
-        ax.plot(x_pois, y_pois, linestyle='--', label=f'Poisson fit (μ={self.mu_pois:.2f})')
+        ax.plot(x_nb, y_nb, marker='o', linestyle='-', label=f'NB fit ($\\mu$={self.mu_nb:.2f}, $\\sigma$={self.alpha_nb:.3f})')
+        ax.plot(x_pois, y_pois, linestyle='--', label=f'Poisson fit ($\\mu$={self.mu_pois:.2f})')
 
         ax.set_xlabel('Count')
         ax.set_ylabel('Probability')
