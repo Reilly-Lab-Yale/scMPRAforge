@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 """Test comparison for the manuscript: auROC and auPRC across the three regimes.
 
+Datasets on x with the tests side by side within each, since the comparison
+the panel supports is between tests within one regime.
+
 Replaces the barcharts previously produced by all_prc_summary.ipynb. Two
 changes of substance:
 
@@ -46,7 +49,7 @@ plt.rcParams["svg.fonttype"] = "none"
 BASE = pathlib.Path(__file__).resolve().parent
 OUT = BASE / "output" / "paper_figs"
 
-BLUE, ORANGE, GREEN, MUTED = "#0072b2", "#d55e00", "#009e73", "#6b6b6b"
+MUTED = "#6b6b6b"
 INK = "#1a1a1a"
 
 DATASETS = [("shendure", "Lalanne et al."),
@@ -55,6 +58,10 @@ DATASETS = [("shendure", "Lalanne et al."),
 TEST_LABEL = {"mwu": "MWU", "ttest": "t-test", "ks": "KS",
               "pseudobulk": "pseudobulk", "wald_auto": "Wald"}
 TEST_ORDER = ["mwu", "ttest", "ks", "pseudobulk", "wald_auto"]
+# Panel A's test colours (plot_curves.py, where the palette is validated), so
+# a hue names the same test throughout the figure.
+TEST_COLOR = {"mwu": "#0072b2", "ttest": "#d55e00", "ks": "#1ca271",
+              "pseudobulk": "#5d06ca", "wald_auto": "#90026f"}
 
 # (dataset, test) pairs that are not evaluable; see module docstring.
 EXCLUDED = {("seelig", "wald_auto"), ("seelig", "pseudobulk")}
@@ -86,28 +93,31 @@ def load():
 
 
 def panel(ax, a, metric):
-    """One metric: tests on x, a box per dataset plus an aggregate."""
-    groups = list(DATASETS)
-    width = 0.8 / len(groups)
-    colours = {"shendure": BLUE, "cohen": ORANGE, "seelig": GREEN}
+    """One metric: datasets on x, a box per test within each.
 
-    for gi, (ds, _lab) in enumerate(groups):
+    Tests keep a fixed slot in every group, so a test the design cannot run
+    leaves a gap rather than shifting its neighbours.
+    """
+    width = 0.8 / len(TEST_ORDER)
+
+    for di, (ds, _lab) in enumerate(DATASETS):
         for ti, test in enumerate(TEST_ORDER):
             sub = a[(a.test == test) & (a.dataset == ds)]
             if sub.empty:
+                assert (ds, test) in EXCLUDED, f"no rows for ({ds}, {test})"
                 continue
-            pos = ti + (gi - (len(groups) - 1) / 2) * width
-            bp = ax.boxplot([sub[metric].values], positions=[pos], widths=width * 0.85,
-                            patch_artist=True, showfliers=False, zorder=3,
-                            medianprops=dict(color=INK, lw=1.1),
-                            whiskerprops=dict(color=colours[ds], lw=0.9),
-                            capprops=dict(color=colours[ds], lw=0.9),
-                            boxprops=dict(facecolor=colours[ds], edgecolor=colours[ds],
-                                          alpha=0.55, lw=0.9))
-            del bp
+            c = TEST_COLOR[test]
+            pos = di + (ti - (len(TEST_ORDER) - 1) / 2) * width
+            ax.boxplot([sub[metric].values], positions=[pos], widths=width * 0.85,
+                       patch_artist=True, showfliers=False, zorder=3,
+                       medianprops=dict(color=INK, lw=1.1),
+                       whiskerprops=dict(color=c, lw=0.9),
+                       capprops=dict(color=c, lw=0.9),
+                       boxprops=dict(facecolor=c, edgecolor=c, alpha=0.55, lw=0.9))
 
-    ax.set_xticks(range(len(TEST_ORDER)))
-    ax.set_xticklabels([TEST_LABEL[t] for t in TEST_ORDER], fontsize=7)
+    ax.set_xticks(range(len(DATASETS)))
+    ax.set_xticklabels([lab for _, lab in DATASETS], fontsize=7)
+    ax.set_xlim(-0.5, len(DATASETS) - 0.5)
     ax.set_ylabel(f"au{metric[2:].upper()}", fontsize=8, color=INK)
     ax.grid(True, axis="y", color="#e6e6e6", lw=0.8, zorder=0)
     ax.set_axisbelow(True)
@@ -125,11 +135,12 @@ def main():
     for ax, metric in zip(axes, ["auroc", "auprc"]):
         panel(ax, a, metric)
 
-    handles = [plt.Rectangle((0, 0), 1, 1, facecolor=c, edgecolor=c, alpha=0.55)
-               for c in (BLUE, ORANGE, GREEN)]
+    handles = [plt.Rectangle((0, 0), 1, 1, facecolor=TEST_COLOR[t],
+                             edgecolor=TEST_COLOR[t], alpha=0.55)
+               for t in TEST_ORDER]
     fig.legend(handles=handles,
-               labels=[lab for _, lab in DATASETS],
-               loc="lower center", ncol=3, frameon=False, fontsize=7,
+               labels=[TEST_LABEL[t] for t in TEST_ORDER],
+               loc="lower center", ncol=len(TEST_ORDER), frameon=False, fontsize=7,
                bbox_to_anchor=(0.5, 0.0))
 
     fig.tight_layout(rect=(0, 0.08, 1, 1))
