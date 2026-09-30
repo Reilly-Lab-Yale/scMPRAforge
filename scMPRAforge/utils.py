@@ -335,7 +335,8 @@ def sample_from_library(library,size):
     Uses abundance to sample using inverse transform sampling. 
     TODO: add table type check. 
     """
-    assert sum(library["abundance"])-1.0<0.0001; "Abundance must sum to 1."
+    total = sum(library["abundance"])
+    assert abs(total - 1.0) < 1e-4, f"Abundance must sum to 1, got {total}"
     
     library=library.reset_index(drop=True)
     library["cum_abundance"]=library["abundance"].cumsum()
