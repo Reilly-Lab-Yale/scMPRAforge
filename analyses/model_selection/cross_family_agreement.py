@@ -82,6 +82,11 @@ EXPANSION_LABEL = {
 # included -- so it shows how much the two directions drift apart when the
 # zeros are unconditional rather than reporter-informed.
 SCATTER = CANONICAL | {"shendure_cm_nb_phantom"}
+# Tail summary for the table: the fraction of pairs whose two families
+# disagree by more than this. The maximum is set by a single pair, typically
+# one with a near-zero by-cell-type mean, and grows with the number of pairs,
+# so it does not compare across datasets; a fraction over a threshold does.
+TAIL = 0.10
 
 
 def discover():
@@ -195,10 +200,12 @@ def main():
                          colour=DATASET_COLOUR.get(dataset, MUTED)))
 
     rows.sort(key=lambda r: r["rel"].median())
-    print(f"{'fit':32s} {'n':>6s} {'median':>9s} {'p95':>9s} {'max':>9s}  canonical")
+    print(f"{'fit':32s} {'n':>6s} {'median':>9s} {'p95':>9s} {'max':>9s} "
+          f"{'>' + format(TAIL, '.0%'):>7s}  canonical")
     for r in rows:
         print(f"{r['name']:32s} {len(r['rel']):6d} {r['rel'].median():9.2e} "
-              f"{r['rel'].quantile(0.95):9.2e} {r['rel'].max():9.2e}"
+              f"{r['rel'].quantile(0.95):9.2e} {r['rel'].max():9.2e} "
+              f"{(r['rel'] > TAIL).mean():7.2%}"
               f"  {'*' if r['canonical'] else ''}")
 
     canon = [r for r in rows if r["canonical"]]
@@ -326,12 +333,14 @@ def manuscript_table(rows):
     """
     tsv = OUT / "cross_family_agreement.tsv"
     with open(tsv, "w") as f:
-        f.write("fit\tdataset\tcanonical\tn_pairs\tmedian_pct\tp95_pct\tmax_pct\n")
+        f.write("fit\tdataset\tcanonical\tn_pairs\tmedian_pct\tp95_pct\t"
+                f"max_pct\tpct_pairs_over_{100*TAIL:.0f}pct\n")
         for r in rows:
             f.write(f"{r['name']}\t{r['dataset']}\t{int(r['canonical'])}\t"
                     f"{len(r['rel'])}\t{100*r['rel'].median():.4g}\t"
                     f"{100*r['rel'].quantile(0.95):.4g}\t"
-                    f"{100*r['rel'].max():.4g}\n")
+                    f"{100*r['rel'].max():.4g}\t"
+                    f"{100*(r['rel'] > TAIL).mean():.4g}\n")
 
     def pct(x):
         """Percentages a reader can scan: no scientific notation in a table."""
@@ -364,7 +373,7 @@ def manuscript_table(rows):
         shown = [r for r in rows if r["dataset"] in MANUSCRIPT_DATASETS]
         f.write("\\begin{tabular}{lllrrrr}\n\\hline\n")
         f.write("Dataset & Expansion & Family & Pairs & Median & 95th pct "
-                "& Max \\\\\n\\hline\n")
+                f"& Pairs $>{100*TAIL:.0f}\\%$ \\\\\n\\hline\n")
         for r in shown:
             ds = DATASET_LABEL.get(r["dataset"], r["dataset"])
             expansion, family = split_name(r["name"], r["dataset"])
@@ -372,7 +381,7 @@ def manuscript_table(rows):
             f.write(f"{ds}{mark} & {expansion} & {family} & "
                     f"{len(r['rel']):,} & {pct(r['rel'].median())} & "
                     f"{pct(r['rel'].quantile(0.95))} & "
-                    f"{pct(r['rel'].max())} \\\\\n")
+                    f"{pct((r['rel'] > TAIL).mean())} \\\\\n")
         f.write("\\hline\n\\end{tabular}\n")
     print(f"wrote {tsv.name} and {tex.name}")
 
