@@ -17,6 +17,10 @@ conda activate tz
 export PYTHONPATH=/nfs/roberts/project/pi_skr2/mcn26/tabula-rasa:$PYTHONPATH
 
 cd /nfs/roberts/project/pi_skr2/mcn26/tabula-rasa/analyses/model_fitting/qc
+# Propagate the failure. Without this the job reports CD even when run_qc
+# raised, and a watcher keyed on job state reads a broken QC as success.
 ipython run_qc.py -- --dataset "$1" --ortho "$2"
+rc=$?
 
-echo "EXITING SHELL"
+echo "EXITING SHELL (run_qc rc=$rc)"
+exit $rc
