@@ -336,6 +336,9 @@ SEED = 20260505
 
 # Empirical anchor values for plot overlay, and the source of truth for every
 # per-dataset number in this module -- do not restate them in comments.
+# Every value here is derived from that dataset's canonical Bounds preset and
+# ortho by derive_anchors.py, which diffs against this dict and prints a
+# replacement. Re-run it after any canonical refit rather than editing by hand.
 #
 # activity_max_mult is the data-derived ratio p95(mu) / minP, i.e. how broad
 # the assayed CRE activity dynamic range is, robust to single-CRE outliers.
@@ -350,8 +353,8 @@ EMPIRICAL = {
         lib_alpha_nb=0.2241, minP=0.0414, activity_max_mult=99.21,
     ),
     "cohen-Rod": dict(
-        n_cells=18633, n_cres=116, bcs_per_cre=17244.5, moi=149.15,
-        lib_alpha_nb=1.3873, minP=0.9363, activity_max_mult=1.11,
+        n_cells=18633, n_cres=116, bcs_per_cre=17244.5, moi=148.942,
+        lib_alpha_nb=1.38727, minP=1.12119, activity_max_mult=1.0103,
     ),
     # Yin et al. synthesised its barcodes rather than adding them by PCR, so
     # its library is near-deterministic and the NB fit returns alpha at the
