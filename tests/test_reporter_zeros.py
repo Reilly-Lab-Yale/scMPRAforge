@@ -59,7 +59,32 @@ def test_coarse_counts_candidates_including_orphans():
     assert n_total("coarse") == {"A": 9, "B": 2}
 
 
+
+
+def test_single_keeps_groups_whose_pairs_all_expressed():
+    """A group with no silent pair still gets a row, at zero.
+
+    The caller reads its group list from this table and merges the nonzero
+    counts onto it, so a dropped group would silently take its own
+    observations out of the design. CRE C is detected once, in a cell that
+    expressed it, so it earns no zero but must still appear.
+    """
+    reporter = pd.concat([REPORTER, pd.DataFrame(
+        {"rep_id": ["1"], "cell_bc": ["c3"], "cre_id": ["C"]})])
+    mpra_map = pd.concat([MPRA_MAP, pd.DataFrame(
+        {"rep_id": ["1"], "mpra_bc": ["z1"], "cre_id": ["C"]})])
+    nonzero = pd.concat([NONZERO, pd.DataFrame(
+        {"rep_id": ["1"], "cell_bc": ["c3"], "cre_id": ["C"],
+         "cell_type": ["T"], "umis_mpra_bc": [2]})])
+    t = core._reporter_zero_counts(nonzero, reporter, mpra_map, CELL_MAP,
+                                   "cre_id", levels=["A", "B", "C"],
+                                   reporter_expansion="single")
+    got = dict(zip(t["cre_id"], t["n_total"]))
+    assert got == {"A": 1, "B": 1, "C": 0}, got
+
+
 if __name__ == "__main__":
-    test_single_counts_only_silent_detections()
-    test_coarse_counts_candidates_including_orphans()
-    print("ok")
+    for name, fn in sorted(globals().items()):
+        if name.startswith("test_"):
+            fn()
+            print(f"ok  {name}")

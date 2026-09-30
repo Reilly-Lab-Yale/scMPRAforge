@@ -2476,13 +2476,17 @@ def _reporter_zero_counts(nz_pdf, reporter, mpra_map, cell_map, split, levels,
         # measurement, not a silent one, so it contributes no zero. That
         # also drops every orphan, whose own counts are the evidence it was
         # transfected.
+        # Every group keeps a row, at zero where each of its pairs expressed:
+        # the caller reads the group list from here, and a dropped group would
+        # take its nonzero observations out of the design with it.
         silent = all_cells.merge(nz_pairs.assign(_expressed=True),
                                  on=["rep_id", "cell_bc", "cre_id"], how="left")
         silent = silent[silent["_expressed"].isna()]
-        total = (silent
-                 .groupby(["_split", "_anti", "rep_id"])
-                 .size()
-                 .reset_index(name="n_total"))
+        keys = ["_split", "_anti", "rep_id"]
+        total = (all_cells[keys].drop_duplicates().merge(
+                     silent.groupby(keys).size().reset_index(name="n_total"),
+                     on=keys, how="left"))
+        total["n_total"] = total["n_total"].fillna(0).astype(np.int64)
     else:
         raise ValueError(f"Unknown reporter_expansion: {reporter_expansion!r}")
     total = total.rename(columns={"_split": split, "_anti": anti})
