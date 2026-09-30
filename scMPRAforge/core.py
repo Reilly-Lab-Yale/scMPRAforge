@@ -2395,16 +2395,20 @@ def _reporter_zero_counts(nz_pdf, reporter, mpra_map, cell_map, split, levels,
 
     TODO: rename function so it is clear that this is specific to coarse reporters
 
-    Cells with nonzero MPRA obs but no reporter detection (-U6 +MPRA, i.e.
-    orphan cells) are treated as confirmed transfections (false-negative
-    reporter) and included in n_total alongside reporter-confirmed cells.
-
     reporter_expansion controls how CRE-level detections map to observation
     counts:
-      "coarse" (default): each detection contributes n_barcodes zeros (one per
-          barcode of the detected CRE). This is the CRE-coarse expansion.
-      "single": each detection contributes exactly 1 zero regardless of barcode
-          count. Conservative interpretation of a CRE-level reporter signal.
+      "coarse" (default): every (cell, CRE) with evidence of transfection
+          contributes n_barcodes candidate observations (one per barcode of
+          that CRE), from which the nonzero observations are subtracted.
+          Evidence is a reporter detection or a nonzero count of the CRE's
+          own barcodes: cells with -U6 +MPRA (orphans, i.e. a false-negative
+          reporter) are confirmed transfections and count alongside
+          reporter-confirmed cells.
+      "single": one zero per (cell, CRE) the reporter detected with none of
+          that CRE's barcodes observed, which is the rule of Zhao et al. 2023
+          (their U). A pair with any nonzero observation is an expression
+          measurement rather than a silent one and contributes no zero, so
+          orphans contribute none.
 
     nz_pdf must include a cell_bc column.
 
@@ -2466,8 +2470,16 @@ def _reporter_zero_counts(nz_pdf, reporter, mpra_map, cell_map, split, levels,
                  .sum()
                  .reset_index(name="n_total"))
     elif reporter_expansion == "single":
-        # Each detection contributes exactly 1 zero
-        total = (all_cells
+        # One zero per (cell, CRE) the reporter detected with no barcode of
+        # that CRE observed -- the rule of Zhao et al. 2023 (their U).
+        # A pair carrying any nonzero observation is an expression
+        # measurement, not a silent one, so it contributes no zero. That
+        # also drops every orphan, whose own counts are the evidence it was
+        # transfected.
+        silent = all_cells.merge(nz_pairs.assign(_expressed=True),
+                                 on=["rep_id", "cell_bc", "cre_id"], how="left")
+        silent = silent[silent["_expressed"].isna()]
+        total = (silent
                  .groupby(["_split", "_anti", "rep_id"])
                  .size()
                  .reset_index(name="n_total"))
