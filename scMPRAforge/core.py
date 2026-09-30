@@ -3636,6 +3636,18 @@ class ortho:
                 n_total = lvl.groupby(anti)["n_total"].sum()
                 n_total.index = n_total.index.astype(str)
                 obs_sum.index = obs_sum.index.astype(str)
+                if (reporter_expansion or "coarse") == "single":
+                    # n_total counts different things per expansion, so the
+                    # denominator is assembled the way the fit assembles it in
+                    # _build_obs_phantom_inputs: single mode's n_total is the
+                    # zero count alone and the nonzero observations are added
+                    # to it, whereas coarse mode's already counts every
+                    # candidate observation, nonzero included.
+                    n_nz = _to_pandas(
+                        subset[subset["umis_mpra_bc"] > 0].groupby(anti).size())
+                    n_nz.index = n_nz.index.astype(str)
+                    n_total = n_total.add(
+                        n_nz.reindex(n_total.index).fillna(0), fill_value=0)
                 data_means = obs_sum / n_total.reindex(obs_sum.index).replace(0, np.nan)
                 data_means.name = "mean(umis_mpra_bc)"
             else:
