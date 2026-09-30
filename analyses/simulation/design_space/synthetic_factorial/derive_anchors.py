@@ -58,6 +58,16 @@ def derive(dataset, fit):
     assert mu.size and np.isfinite(mu).all(), f"{fit}: bad mu in reference"
     ref = float(b.reference_activity)
     assert ref > 0, f"{fit}: reference_activity is {ref}"
+    # The preset and the ortho are separate artifacts and a refit updates them
+    # in two steps, so a stale preset read against a fresh ortho would yield a
+    # baseline from one fit and a spread from the other. reference_activity is
+    # the reference CRE's mu averaged over cell types, which ties the two
+    # together and fails loudly when only one has been regenerated.
+    across = np.array([float(params.nb[k]["mu"]["reference"]) for k in params.keys])
+    assert abs(across.mean() - ref) / ref < 1e-3, (
+        f"{fit}: preset reference_activity {ref:.6g} does not match the ortho's "
+        f"mean reference mu {across.mean():.6g}; one of them is stale -- "
+        f"regenerate the Bounds preset from this ortho before deriving anchors")
     return dict(
         n_cells=int(b.cells_per_cell_type["reference"]),
         n_cres=int(mu.size),
