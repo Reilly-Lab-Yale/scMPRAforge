@@ -3494,6 +3494,17 @@ class ortho:
         source table does not contain, so the denominator is reconstructed
         per mode rather than read off the table.
 
+        What r can and cannot tell you: the stratified designs are saturated,
+        one parameter per level, so the weighted MLE of each group's mean IS
+        its weighted sample mean. Reconstruct the denominator correctly and r
+        is 1 by construction, for every mode. r below 1 therefore reports a
+        bookkeeping disagreement between this function and the fit -- a
+        denominator built differently from the one the fit used -- and not a
+        model that describes the data badly. It is a did-not-silently-break
+        check. Do not read it as fit quality, and do not rank modes by it:
+        two modes fit different observation sets, so their r values are not
+        comparable even when both are correct.
+
         design_keys: optional list of level keys from the design dict, used
         only for a sanity-check assertion that params and design are aligned.
         fit_mode: selects how the denominator is rebuilt -- _cm_group_totals

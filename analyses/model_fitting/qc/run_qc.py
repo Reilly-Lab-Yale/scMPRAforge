@@ -8,6 +8,14 @@ Usage:
     ipython run_qc.py -- --dataset seelig --ortho seelig_cm_nb_phantom
 
 Detects NB-only models automatically (skips ZI plots).
+
+The Pearson r of mu against the mean UMI is a sanity check, not a measure of
+fit quality. The designs are saturated, so a correctly reconstructed
+denominator makes mu equal the weighted sample mean and r equal 1 exactly.
+A value below 1 means the denominator this script rebuilt disagrees with the
+one the fit used, which is a bug in one of them. It says nothing about how
+well the model describes the data, and r cannot be used to rank fit modes
+against each other, since each mode fits a different set of observations.
 Generates:  qc/{ortho_name}/plots/*.svg  and  qc/{ortho_name}/summary.txt
 """
 import argparse
