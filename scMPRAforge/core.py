@@ -3495,15 +3495,18 @@ class ortho:
         per mode rather than read off the table.
 
         What r can and cannot tell you: the stratified designs are saturated,
-        one parameter per level, so the weighted MLE of each group's mean IS
-        its weighted sample mean. Reconstruct the denominator correctly and r
-        is 1 by construction, for every mode. r below 1 therefore reports a
-        bookkeeping disagreement between this function and the fit -- a
-        denominator built differently from the one the fit used -- and not a
-        model that describes the data badly. It is a did-not-silently-break
-        check. Do not read it as fit quality, and do not rank modes by it:
-        two modes fit different observation sets, so their r values are not
-        comparable even when both are correct.
+        one parameter per level, so the weighted MLE of each group's mean is
+        its weighted sample mean, and r would be exactly 1 if the denominator
+        here matches the fit's AND the optimiser reached that MLE. r below 1
+        means one of those two failed, and the two causes look alike from
+        here. Empirically the second is the common one once a mode drives its
+        means toward zero: on Zhao et al. the coarse-expansion fit, whose
+        by-cell-type means sit near 1e-4, gives r = 0.32 by cell type while
+        giving 1.000 by CRE on the same ortho and the same denominator.
+        So r is a did-not-silently-break check that also degrades when a fit
+        is numerically unwell. What it cannot do is rank modes: each fits a
+        different set of observations, so their r values are not comparable
+        even when every one of them is correct.
 
         design_keys: optional list of level keys from the design dict, used
         only for a sanity-check assertion that params and design are aligned.

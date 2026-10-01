@@ -9,13 +9,15 @@ Usage:
 
 Detects NB-only models automatically (skips ZI plots).
 
-The Pearson r of mu against the mean UMI is a sanity check, not a measure of
-fit quality. The designs are saturated, so a correctly reconstructed
-denominator makes mu equal the weighted sample mean and r equal 1 exactly.
-A value below 1 means the denominator this script rebuilt disagrees with the
-one the fit used, which is a bug in one of them. It says nothing about how
-well the model describes the data, and r cannot be used to rank fit modes
-against each other, since each mode fits a different set of observations.
+The Pearson r of mu against the mean UMI is a sanity check, not a ranking.
+The designs are saturated, so r is exactly 1 when the denominator rebuilt
+here matches the one the fit used and the optimiser reached the saturated
+solution. Below 1 means one of those failed -- a bookkeeping disagreement,
+or a fit that did not converge to it -- and the two are hard to tell apart
+from the number alone. A mode that drives its means toward zero degrades r
+this way: Zhao et al.'s coarse-expansion fit gives r = 0.32 by cell type and
+1.000 by CRE on the same ortho. r still cannot rank modes against each
+other, since each fits a different set of observations.
 Generates:  qc/{ortho_name}/plots/*.svg  and  qc/{ortho_name}/summary.txt
 """
 import argparse
