@@ -17,4 +17,6 @@ module load miniconda
 conda activate tz
 
 python design_space_sweep.py "$@"
-echo "EXITING SHELL"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

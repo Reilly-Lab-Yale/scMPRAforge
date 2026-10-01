@@ -55,7 +55,7 @@
     "pseudobulk_deflated"
   ],
   "primary_arm": "mwu",
-  "sim_root": "/nfs/roberts/scratch/pi_skr2/mcn26/synthetic_factorial_sims/2026-08-18_synthetic_factorial_arms_union",
+  "sim_root": "/nfs/roberts/scratch/pi_skr2/mcn26/synthetic_factorial_sims/2026-05-05_synthetic_factorial_union",
   "cache_root": "/nfs/roberts/project/pi_skr2/shared/tabula_data/simulated/synthetic_factorial_caches/union",
   "empirical": {
     "shendure-Pluripotent": {
@@ -71,10 +71,10 @@
       "n_cells": 18633,
       "n_cres": 116,
       "bcs_per_cre": 17244.5,
-      "moi": 149.15,
-      "lib_alpha_nb": 1.3873,
-      "minP": 0.9363,
-      "activity_max_mult": 1.11
+      "moi": 148.942,
+      "lib_alpha_nb": 1.38727,
+      "minP": 1.12119,
+      "activity_max_mult": 1.0103
     },
     "seelig-HepG2": {
       "n_cells": 5858,

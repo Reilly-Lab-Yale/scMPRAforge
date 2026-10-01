@@ -12,4 +12,6 @@ module load miniconda
 conda activate tz
 
 python mwu_retest.py "$@"
-echo "EXITING SHELL"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

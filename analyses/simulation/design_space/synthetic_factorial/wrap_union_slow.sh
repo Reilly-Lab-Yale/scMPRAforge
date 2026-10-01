@@ -34,4 +34,6 @@ conda activate tz
 export SYNTHETIC_FACTORIAL_SIM_ROOT=/nfs/roberts/scratch/pi_skr2/mcn26/synthetic_factorial_sims/2026-08-18_synthetic_factorial_arms
 
 python synthetic_factorial.py simulate union "$SLURM_ARRAY_TASK_ID" 200
-echo "EXITING SHELL"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

@@ -26,4 +26,6 @@ module load miniconda
 conda activate tz
 
 python synthetic_factorial.py "$@"
-echo "EXITING SHELL"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

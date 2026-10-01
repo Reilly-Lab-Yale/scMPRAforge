@@ -12,4 +12,6 @@ module load miniconda
 conda activate tz
 
 python shendure_calibration_mwu_followup.py all
-echo "EXITING SHELL"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

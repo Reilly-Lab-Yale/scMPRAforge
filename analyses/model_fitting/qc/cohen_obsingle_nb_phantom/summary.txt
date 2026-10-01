@@ -10,27 +10,13 @@
 
 -- Mu range (NB mean estimate) -----------------------------------------
 
-  by_cell_type: min=0.0193  max=1.3918  median=0.8832
-  by_cre: min=0.0239  max=1.3919  median=0.8850
+  by_cell_type: min=0.0197  max=1.4963  median=1.0604
+  by_cre: min=0.0195  max=1.4965  median=1.0634
 
 -- Pearson r (mu vs mean UMI) ------------------------------------------
 
-  by_cell_type: mean r=0.806  min=0.724  max=0.929  n(r<0.8)=2  n_nan_r=0
+  by_cell_type: mean r=1.000  min=1.000  max=1.000  n(r<0.8)=0  n_nan_r=0
     NaN anti-levels dropped before regression: 9/461 across all models
-    Low-r levels (r < 0.8):
-      r=0.724  Bipolar
-      r=0.750  reference
-  by_cre: mean r=0.909  min=-0.695  max=1.000  n(r<0.8)=10  n_nan_r=1
+  by_cre: mean r=1.000  min=1.000  max=1.000  n(r<0.8)=0  n_nan_r=1
     NaN anti-levels dropped before regression: 1/453 across all models
-    Low-r levels (r < 0.8):
-      r=-0.695  ebox_gcagctgg_to_gcagcagg
-      r=0.476  combo_Mute_crx5_crx4
-      r=0.576  swap_crx5_to_ctaatccc_forward
-      r=0.694  swap_crx1_to_gggcttag_reverse
-      r=0.706  tail_conserve5_443_to_448
-      r=0.731  combo_Q50_crx2_crx1
-      r=0.769  swap_crx5_to_ctaagccc_forward
-      r=0.774  combo_Mute_crx1
-      r=0.776  combo_Q50_crx4_crx3
-      r=0.794  combo_Q50_crx5_crx4
 

@@ -1,0 +1,36 @@
+========================================================================
+  cohen_obsingle_zinb_phantom -- Model QC Summary
+  Model type: ZINB
+========================================================================
+
+-- Convergence ---------------------------------------------------------
+
+  by_cell_type: 4/4 converged
+  by_cre: 114/114 converged
+
+-- Mu range (NB mean estimate) -----------------------------------------
+
+  by_cell_type: min=0.0008  max=1.4143  median=0.8860
+  by_cre: min=0.0003  max=1.4071  median=0.8884
+
+-- Pearson r (mu vs mean UMI) ------------------------------------------
+
+  by_cell_type: mean r=0.804  min=0.723  max=0.928  n(r<0.8)=2  n_nan_r=0
+    NaN anti-levels dropped before regression: 9/461 across all models
+    Low-r levels (r < 0.8):
+      r=0.723  Bipolar
+      r=0.749  reference
+  by_cre: mean r=0.907  min=-0.697  max=1.000  n(r<0.8)=10  n_nan_r=1
+    NaN anti-levels dropped before regression: 1/453 across all models
+    Low-r levels (r < 0.8):
+      r=-0.697  ebox_gcagctgg_to_gcagcagg
+      r=0.462  combo_Mute_crx5_crx4
+      r=0.557  swap_crx5_to_ctaatccc_forward
+      r=0.688  swap_crx1_to_gggcttag_reverse
+      r=0.703  tail_conserve5_443_to_448
+      r=0.721  combo_Q50_crx2_crx1
+      r=0.763  swap_crx5_to_ctaagccc_forward
+      r=0.767  combo_Mute_crx1
+      r=0.770  combo_Q50_crx4_crx3
+      r=0.790  combo_Q50_crx5_crx4
+

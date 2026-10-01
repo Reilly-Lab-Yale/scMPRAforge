@@ -11,4 +11,6 @@ module load miniconda
 conda activate tz
 
 python takeshi_pairwise_power_ttest.py all
-echo "EXITING SHELL"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

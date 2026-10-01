@@ -22,4 +22,6 @@ export SYNTHETIC_FACTORIAL_SIM_ROOT=/nfs/roberts/scratch/pi_skr2/mcn26/synthetic
 export SYNTHETIC_FACTORIAL_CACHE_ROOT=/nfs/roberts/scratch/pi_skr2/mcn26/synthetic_factorial_smoke_caches
 
 python synthetic_factorial.py simulate smoke 0 1
-echo "EXITING SHELL"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

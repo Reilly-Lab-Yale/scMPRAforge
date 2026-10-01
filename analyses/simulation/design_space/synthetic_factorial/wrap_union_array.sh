@@ -20,4 +20,6 @@ conda activate tz
 # in /var/spool, not the project location. Slurm sets WorkDir to the sbatch
 # invocation cwd, which is what we want.
 python synthetic_factorial.py simulate union "$SLURM_ARRAY_TASK_ID" 5000
-echo "EXITING SHELL"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

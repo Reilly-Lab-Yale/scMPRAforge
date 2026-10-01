@@ -13,6 +13,7 @@ module load miniconda
 conda activate tz
 
 python shendure_pairwise_null_calibration_ttest.py all
+rc=$?
 exit_code=$?
 
 if [ $exit_code -eq 0 ]; then
@@ -23,4 +24,5 @@ else
         notify-job "shendure_pairwise_null_calibration_ttest exited with code $exit_code on $(hostname). Check slurm-${SLURM_JOB_ID}.err"
 fi
 
-echo "EXITING SHELL"
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

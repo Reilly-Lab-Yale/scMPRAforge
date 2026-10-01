@@ -13,5 +13,7 @@ module load miniconda
 conda activate env_tensorzinb #mccleary
 
 ipython fit.py
+rc=$?
 
-echo "EXITING SHELL"
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

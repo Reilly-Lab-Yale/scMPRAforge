@@ -19,4 +19,6 @@
 module load miniconda
 conda activate tz
 python synthetic_factorial.py simulate union "$SLURM_ARRAY_TASK_ID" 50
-echo "EXITING SHELL"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

@@ -11,4 +11,6 @@ module load miniconda
 conda activate tz
 
 python shendure_power_ttest_all_cell_types.py all
-echo "EXITING SHELL"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

@@ -12,4 +12,6 @@ conda activate tz
 
 cd /nfs/roberts/project/pi_skr2/mcn26/tabula-rasa/analyses/model_selection
 python cm_family_pi.py
-echo "EXITING SHELL"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

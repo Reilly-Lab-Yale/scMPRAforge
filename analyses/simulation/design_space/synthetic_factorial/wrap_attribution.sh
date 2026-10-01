@@ -20,4 +20,6 @@ conda activate tz
 # /var/spool/slurmd. Slurm sets WorkDir to the sbatch invocation cwd.
 
 python attribution.py
-echo "EXITING SHELL"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc
