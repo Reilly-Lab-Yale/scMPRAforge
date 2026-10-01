@@ -209,6 +209,10 @@ MPRA_UMIWISE_COLUMN_ORDER = [
 # added by scMPRA_data itself: cre_id_original keeps each negative control's
 # name once set_negative_controls has relabelled it "reference"
 MPRA_DERIVED_COLUMNS = {"cre_id_original"}
+# Per-row parameters the simulator writes alongside the counts it drew.
+# They are package output, not part of the input contract a user supplies,
+# so a simulated table still has to type as a plain MPRA table.
+MPRA_SIMULATION_COLUMNS = {"mu", "theta", "r", "sigmasquare", "zi", "p"}
 
 MPRA_FACTOR_COLUMNS = {
     "cell_bc",
@@ -1759,9 +1763,20 @@ class scMPRA_data:
         ret._ensure_consider_missing_defaults()
 
         # columns the package adds itself are not part of the input contract
+        # A column named "Unnamed: N" is a pandas index that survived a
+        # round trip through a headered format. It carries no data and would
+        # otherwise fail the type check, so drop it rather than exempt it.
+        stray = [c for c in ret.data.columns if re.fullmatch(r"Unnamed: \d+", str(c))]
+        if stray:
+            logger.warning(f"dropping index artifact column(s) {stray} from {path}")
+            ret.data = ret.data.drop(columns=stray)
+        ignored = MPRA_DERIVED_COLUMNS | MPRA_SIMULATION_COLUMNS
         ret.table_type = _strict_mpra_table_type(
-            [c for c in ret.data.columns if c not in MPRA_DERIVED_COLUMNS])
-        assert ret.table_type in {"mpra_readwise", "mpra_umiwise"}, "Malformed table."
+            [c for c in ret.data.columns if c not in ignored])
+        assert ret.table_type in {"mpra_readwise", "mpra_umiwise"}, (
+            f"Malformed table at {path}: columns "
+            f"{sorted(set(map(str, ret.data.columns)) - ignored)} do not type as "
+            f"read-wise or UMI-wise.")
         if not ret.source:
             ret.source = str(path)
 
