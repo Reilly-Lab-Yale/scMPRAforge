@@ -1,7 +1,6 @@
 #!/bin/bash
-#SBATCH -p priority_gpu
+#SBATCH -p priority
 #SBATCH -A prio_skr2
-#SBATCH --gpus=h200:1
 #SBATCH -c 4
 #SBATCH --mem=64G
 #SBATCH -t 12:00:00

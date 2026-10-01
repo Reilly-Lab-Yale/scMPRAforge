@@ -155,6 +155,12 @@ def phase_create(client):
 # Phase: fit -- ZINB model fitting
 # ---------------------------------------------------------------------------
 
+# Cohen is the cheapest canonical fit in the compute benchmark (564 s on four
+# CPU cores), so the GPU buys little and a dead GPU node can hold the job
+# indefinitely. Set SCMPRA_FIT_GPU=1 to use one anyway.
+USE_GPU = os.environ.get("SCMPRA_FIT_GPU", "0") == "1"
+
+
 def phase_fit(client):
     for gt_idx in range(N_GT_DRAWS):
         print(f"--- Fitting GT draw {gt_idx} ---", flush=True)
@@ -168,7 +174,7 @@ def phase_fit(client):
             serial_orthos=True,
             nb_only=True,
             phantom_compress=False,
-            gpu=True,
+            gpu=USE_GPU,
         )
         sim.save()
         print(f"GT draw {gt_idx}: fit done.", flush=True)
