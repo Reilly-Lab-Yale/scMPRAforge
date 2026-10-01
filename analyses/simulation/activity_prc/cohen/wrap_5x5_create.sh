@@ -13,4 +13,5 @@ conda activate tz
 
 cd /nfs/roberts/project/pi_skr2/mcn26/tabula-rasa/analyses/simulation/activity_prc/cohen
 
+export PYTHONPATH=/nfs/roberts/project/pi_skr2/mcn26/tabula-rasa:${PYTHONPATH:-}
 python cohen_5x5_activity.py create

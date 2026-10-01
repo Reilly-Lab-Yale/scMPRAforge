@@ -52,7 +52,7 @@ DATA_ROOT = Path("/nfs/roberts/project/pi_skr2/shared/tabula_data_new")
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-SIM_DATE = "2026-08-13"
+SIM_DATE = "2026-09-30"
 SIM_DIR = DATA_ROOT / "simulated" / f"{SIM_DATE}_cohen_pw"
 
 ORTHO_DIR = DATA_ROOT / "cohen" / "cohen_obsingle_nb_phantom"

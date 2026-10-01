@@ -48,7 +48,7 @@ DATA_ROOT = Path("/nfs/roberts/project/pi_skr2/shared/tabula_data_new")
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-SIM_DATE = "2026-04-10"
+SIM_DATE = "2026-09-30"
 SIM_DIR = DATA_ROOT / "simulated" / f"{SIM_DATE}_cohen_cal"
 
 # Cohen is episomal: same CREs across all CTs. Hardcoded n_cres=115 to match

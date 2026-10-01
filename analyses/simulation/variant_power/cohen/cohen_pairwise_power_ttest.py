@@ -47,7 +47,7 @@ DATA_ROOT = Path("/nfs/roberts/project/pi_skr2/shared/tabula_data_new")
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-SIM_DATE = "2026-04-10"
+SIM_DATE = "2026-09-30"
 SIM_DIR = DATA_ROOT / "simulated" / f"{SIM_DATE}_cohen_pw"
 
 ORTHO_DIR = DATA_ROOT / "cohen" / "cohen_obsingle_nb_phantom"
@@ -95,6 +95,10 @@ def _discover_sims():
 
 def phase_compute(client):
     sims = _discover_sims()
+    assert sims, (
+        f"no complete sims under {SIM_DIR}. This script only reads sims; the\n"
+        f"MWU variant-power run creates them and must finish first. Writing\n"
+        f"results from zero sims would overwrite good output with empty frames.")
     print(f"Discovered {len(sims)} complete sims under {SIM_DIR}.",
           flush=True)
 
