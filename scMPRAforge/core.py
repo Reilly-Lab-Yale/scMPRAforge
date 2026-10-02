@@ -1798,9 +1798,11 @@ class scMPRA_data:
             keep = [c for c in MPRA_UMIWISE_COLUMN_ORDER if c in ddf.columns]
         else:
             raise ValueError(f"Unsupported table_type for parquet save: {self.table_type}")
-        # standard columns first, then any others (cre_id_original records
-        # which negative control a pooled "reference" row came from)
-        keep += [c for c in ddf.columns if c not in keep]
+        # standard columns, then the package's own derived columns
+        # (cre_id_original records which negative control a pooled
+        # "reference" row came from). Anything else -- simulator parameters,
+        # a stray "Unnamed: N" index -- is not part of the table.
+        keep += [c for c in sorted(MPRA_DERIVED_COLUMNS) if c in ddf.columns]
         ddf = ddf[keep]
         meta = _densify_sparse_partition(ddf._meta)
         ddf = ddf.map_partitions(_densify_sparse_partition, meta=meta)
