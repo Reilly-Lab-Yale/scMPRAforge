@@ -13,7 +13,9 @@ eval "$(conda shell.bash hook)"
 conda activate tz
 cd /nfs/roberts/project/pi_skr2/mcn26/tabula-rasa/analyses/simulation/activity_power
 python retest_arms.py \
-  /nfs/roberts/scratch/pi_skr2/mcn26/restored/2026-04-08_cohen_pow \
-  cohen_power_df_2026-08-13 \
+  /nfs/roberts/project/pi_skr2/shared/tabula_data_new/simulated/2026-09-30_cohen_pow \
+  cohen_power_df_2026-09-30 \
   --arms mwu,mwu_deflated
-echo "exit=$?"
+rc=$?
+echo "EXITING SHELL (rc=$rc)"
+exit $rc

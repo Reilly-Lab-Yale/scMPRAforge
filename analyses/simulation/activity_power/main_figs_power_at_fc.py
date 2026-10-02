@@ -70,8 +70,8 @@ OUT_DIR.mkdir(exist_ok=True)
 # Yin et al. is still t-test: no MWU arm has been run on its power sims.
 DATASETS = {
     "cohen": {
-        "reporter": SCRIPT_DIR / "output/cohen_power_df_2026-08-13_mwu.parquet",
-        "deflated": SCRIPT_DIR / "output/cohen_power_df_2026-08-13_mwu_deflated.parquet",
+        "reporter": SCRIPT_DIR / "output/cohen_power_df_2026-09-30_mwu.parquet",
+        "deflated": SCRIPT_DIR / "output/cohen_power_df_2026-09-30_mwu_deflated.parquet",
         "ref_display": "Rod",
         "title": "Zhao et al.",
         "n_cell_types": 4,

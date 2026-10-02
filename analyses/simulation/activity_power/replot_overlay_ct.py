@@ -40,8 +40,8 @@ BASE = Path(__file__).resolve().parent
 # ARMS comment in shendure/shendure_power_ttest_all_cell_types.py.
 DATASETS = {
     "cohen": [
-        ("reporter", "output/cohen_power_df_2026-08-13_mwu.parquet"),
-        ("deflated", "output/cohen_power_df_2026-08-13_mwu_deflated.parquet"),
+        ("reporter", "output/cohen_power_df_2026-09-30_mwu.parquet"),
+        ("deflated", "output/cohen_power_df_2026-09-30_mwu_deflated.parquet"),
     ],
     "shendure": [
         ("reporter", "shendure/output/power_df_mwu_2026-08-13.parquet"),
