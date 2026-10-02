@@ -5535,8 +5535,12 @@ def canonicalize_hypotheses(hs: HypothesisSet, scmpra: scMPRA_data, inplace: boo
     #    We only need the set of originals that ended up as 'reference'
     sc_data = scmpra.get_data(include_missing=False) if isinstance(scmpra, scMPRA_data) else pd.DataFrame()
     if "cre_id_original" in getattr(sc_data, "columns", []):
+        # Filter in pandas. A lazy dask boolean mask over partitions with
+        # unknown divisions can be paired with the wrong partition, which
+        # raises IndexingError when the partitions differ in length.
+        pairs = _to_pandas_df(sc_data[["cre_id", "cre_id_original"]])
         collapsed = _series_unique_str(
-            sc_data[sc_data["cre_id"] == "reference"]["cre_id_original"]
+            pairs.loc[pairs["cre_id"] == "reference", "cre_id_original"]
         )
         if len(collapsed) > 0:
             collapsed_set = set(collapsed)
