@@ -31,7 +31,13 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 FITS_ROOT = REPO / "analyses" / "model_fitting" / "fits"
 CORE_PY = REPO / "scMPRAforge" / "core.py"
 
-COUNT_COL = "umis_mpra_bc"
+COUNT_COL = "mpra_umis"
+
+
+def count_column(columns, path):
+    names = [c for c in [COUNT_COL, "umis_mpra_bc"] if c in columns]
+    assert len(names) == 1, f"{path}: expected one MPRA count column, got {names}"
+    return names[0]
 
 # The schema, its classification rule and its validation live with the package
 # so fits and this pass cannot drift. Loaded by path rather than imported:
@@ -103,11 +109,14 @@ def source_has_zeros(path):
     if path.name.endswith(".tsv") or path.name.endswith(".tsv.gz"):
         if path.exists():
             import pandas as pd
-            col = pd.read_csv(path, sep="\t", usecols=[COUNT_COL])[COUNT_COL]
+            name = count_column(pd.read_csv(path, sep="\t", nrows=0).columns, path)
+            col = pd.read_csv(path, sep="\t", usecols=[name])[name]
     elif path.is_dir():
         # A .scmpra is a directory: Parquet plus a members.json manifest.
         import pandas as pd
-        col = pd.read_parquet(path / "data.parquet", columns=[COUNT_COL])[COUNT_COL]
+        import pyarrow.parquet as pq
+        name = count_column(pq.ParquetDataset(path / "data.parquet").schema.names, path)
+        col = pd.read_parquet(path / "data.parquet", columns=[name])[name]
 
     result = None
     if col is not None:

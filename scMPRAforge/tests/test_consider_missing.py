@@ -35,7 +35,7 @@ def _toy_missing_pdf() -> pd.DataFrame:
             "cell_type": ["ctA", "ctB"],
             "mpra_bc": ["m1", "m2"],
             "cre_id": ["cre1", "cre2"],
-            "umis_mpra_bc": [5, 7],
+            "mpra_umis": [5, 7],
         }
     )
 
@@ -58,7 +58,7 @@ def test_set_consider_missing_after_ortho_filter_does_not_warn():
             "cell_type": ["ctA", "ctA", "ctA", "ctA"],
             "mpra_bc": ["m1", "m2", "m3", "m4"],
             "cre_id": ["cre1", "cre1", "cre1", "cre2"],
-            "umis_mpra_bc": [1, 1, 1, 1],
+            "mpra_umis": [1, 1, 1, 1],
         }
     )
     obj = _make_obj(pdf)
@@ -92,19 +92,19 @@ def test_split_level_inflation_cell_type_and_cre_id():
         include_missing=True,
         context={"kind": "split_level", "split": "cell_type", "level": "ctA"},
     ).compute().sort_values(["cell_bc", "mpra_bc"]).reset_index(drop=True)
-    assert list(ct.columns) == ["cell_bc", "rep_id", "cre_id", "cell_type", "mpra_bc", "umis_mpra_bc"]
+    assert list(ct.columns) == ["cell_bc", "rep_id", "cre_id", "cell_type", "mpra_bc", "mpra_umis"]
     assert len(ct) == 2
-    assert isinstance(ct["umis_mpra_bc"].dtype, pd.SparseDtype)
-    assert int(ct.loc[ct["mpra_bc"] == "m1", "umis_mpra_bc"].iloc[0]) == 5
-    assert int(ct.loc[ct["mpra_bc"] == "m2", "umis_mpra_bc"].iloc[0]) == 0
+    assert isinstance(ct["mpra_umis"].dtype, pd.SparseDtype)
+    assert int(ct.loc[ct["mpra_bc"] == "m1", "mpra_umis"].iloc[0]) == 5
+    assert int(ct.loc[ct["mpra_bc"] == "m2", "mpra_umis"].iloc[0]) == 0
 
     cr = obj.get_data(
         include_missing=True,
         context={"kind": "split_level", "split": "cre_id", "level": "cre1"},
     ).compute().sort_values(["cell_bc", "mpra_bc"]).reset_index(drop=True)
     assert len(cr) == 2
-    assert int(cr.loc[cr["cell_bc"] == "c1", "umis_mpra_bc"].iloc[0]) == 5
-    assert int(cr.loc[cr["cell_bc"] == "c2", "umis_mpra_bc"].iloc[0]) == 0
+    assert int(cr.loc[cr["cell_bc"] == "c1", "mpra_umis"].iloc[0]) == 5
+    assert int(cr.loc[cr["cell_bc"] == "c2", "mpra_umis"].iloc[0]) == 0
 
 
 def test_consider_missing_policy_persistence_and_legacy_defaults(tmp_path):
@@ -180,7 +180,7 @@ def test_bootstrap_opt_out_warns_and_uses_raw_semantics():
             "transfection_bc": ["t1", "t2", "t2"],
             "cell_type": ["ctA", "ctA", "ctA"],
             "cre_id": ["reference", "creX", "creX"],
-            "umis_mpra_bc": [0, 3, 1],
+            "mpra_umis": [0, 3, 1],
         }
     )
     obj = _make_obj(pdf)

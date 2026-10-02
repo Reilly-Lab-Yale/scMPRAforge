@@ -26,7 +26,7 @@ CELL_MAP = pd.DataFrame({"rep_id": ["1"] * 4,
 #   c4  +reporter -MPRA   silent, on CRE B
 NONZERO = pd.DataFrame({"rep_id": ["1", "1"], "cell_bc": ["c2", "c3"],
                         "cre_id": ["A", "A"], "cell_type": ["T", "T"],
-                        "umis_mpra_bc": [4, 7]})
+                        "mpra_umis": [4, 7]})
 REPORTER = pd.DataFrame({"rep_id": ["1", "1", "1"],
                          "cell_bc": ["c1", "c2", "c4"],
                          "cre_id": ["A", "A", "B"]})
@@ -75,7 +75,7 @@ def test_single_keeps_groups_whose_pairs_all_expressed():
         {"rep_id": ["1"], "mpra_bc": ["z1"], "cre_id": ["C"]})])
     nonzero = pd.concat([NONZERO, pd.DataFrame(
         {"rep_id": ["1"], "cell_bc": ["c3"], "cre_id": ["C"],
-         "cell_type": ["T"], "umis_mpra_bc": [2]})])
+         "cell_type": ["T"], "mpra_umis": [2]})])
     t = core._reporter_zero_counts(nonzero, reporter, mpra_map, CELL_MAP,
                                    "cre_id", levels=["A", "B", "C"],
                                    reporter_expansion="single")

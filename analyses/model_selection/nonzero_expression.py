@@ -51,17 +51,17 @@ def main():
         print(f"\n=== {dataset} ({name})", flush=True)
         ortho = scm.ortho.load(client, str(DATA_ROOT / Path(rel).parent), name)
         data = ortho.training_data.get_data(include_missing=False)
-        if hasattr(data["umis_mpra_bc"].dtype, "fill_value"):
-            data["umis_mpra_bc"] = data["umis_mpra_bc"].astype("int64")
-        obs = scm._to_pandas(data[["cre_id", "umis_mpra_bc"]])
+        if hasattr(data["mpra_umis"].dtype, "fill_value"):
+            data["mpra_umis"] = data["mpra_umis"].astype("int64")
+        obs = scm._to_pandas(data[["cre_id", "mpra_umis"]])
 
         n_rows = len(obs)
-        nz = obs[obs["umis_mpra_bc"] > 0]
+        nz = obs[obs["mpra_umis"] > 0]
         assert len(nz), f"{dataset}: no nonzero observations"
         print(f"    {n_rows:,} rows in the source table, {len(nz):,} nonzero "
               f"({len(nz) / n_rows:.1%})")
 
-        d = (nz.groupby("cre_id")["umis_mpra_bc"]
+        d = (nz.groupby("cre_id")["mpra_umis"]
              .agg(n_nonzero="size", mean_nonzero="mean", median_nonzero="median")
              .reset_index().rename(columns={"cre_id": "model"}))
         d["model"] = d["model"].astype(str)

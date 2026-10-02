@@ -29,6 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, '/nfs/roberts/project/pi_skr2/mcn26/tabula-rasa')
 import scMPRAforge as scm
+from scMPRAforge.core import _canonical_mpra_columns, _mpra_column_mapping
 
 DATA_ROOT = Path('/nfs/roberts/project/pi_skr2/shared/tabula_data/cohen')
 UNJOINED  = DATA_ROOT / 'unjoined'
@@ -38,11 +39,11 @@ PARTS_DIR = DATA_ROOT / '_zero_parts'
 filtered_tsv = UNJOINED / 'read_wise_mpra_retina_filtered.tsv'
 if filtered_tsv.exists():
     print("[1] Loading pre-filtered reads...", flush=True)
-    mpra_filt = pd.read_csv(filtered_tsv, sep='\t')
+    mpra_filt = _canonical_mpra_columns(pd.read_csv(filtered_tsv, sep='\t'))
     print(f"    {len(mpra_filt):,} reads", flush=True)
 else:
     print("[1] Loading and filtering ambiguous rBCs...", flush=True)
-    mpra_raw = pd.read_csv(UNJOINED / 'read_wise_mpra_retina.tsv', sep='\t')
+    mpra_raw = _canonical_mpra_columns(pd.read_csv(UNJOINED / 'read_wise_mpra_retina.tsv', sep='\t'))
     bc_cre = mpra_raw.groupby(['rep_id', 'mpra_bc'])['cre_id'].nunique().reset_index()
     bc_cre.columns = ['rep_id', 'mpra_bc', 'n_cre']
     unambig = bc_cre[bc_cre['n_cre'] == 1][['rep_id', 'mpra_bc']]
@@ -57,10 +58,10 @@ print("[2] Converting to UMI-wise...", flush=True)
 umi_cols = ['cell_bc', 'rep_id', 'cre_id', 'cell_type', 'mpra_bc']
 mpra_umi = (
     mpra_filt
-    .groupby(umi_cols)['umi']
+    .groupby(umi_cols)['mpra_umi']
     .nunique()
     .reset_index()
-    .rename(columns={'umi': 'umis_mpra_bc'})
+    .rename(columns={'mpra_umi': 'mpra_umis'})
 )
 print(f"    {len(mpra_umi):,} UMI-wise rows", flush=True)
 
@@ -72,7 +73,7 @@ u6_umi = (
     .groupby(['rep_id', 'cell_bc', 'cell_type', 'cre_id'])['umi']
     .nunique()
     .reset_index()
-    .rename(columns={'umi': 'umis_transfection_bc'})
+    .rename(columns={'umi': 'transfection_umis'})
 )
 print(f"    {len(u6_umi):,} U6 (cell, CRE) entries", flush=True)
 
@@ -99,8 +100,8 @@ schema = pa.schema([
     ('cre_id', pa.string()),
     ('cell_type', pa.string()),
     ('mpra_bc', pa.string()),
-    ('umis_mpra_bc', pa.int64()),
-    ('umis_transfection_bc', pa.float64()),
+    ('mpra_umis', pa.int64()),
+    ('transfection_umis', pa.float64()),
 ])
 
 existing_parts = list(PARTS_DIR.glob('zeros_*.parquet'))
@@ -122,7 +123,7 @@ else:
         if len(barcodes) == 0:
             continue
 
-        cells = group[['cell_bc', 'cell_type', 'umis_transfection_bc']].values
+        cells = group[['cell_bc', 'cell_type', 'transfection_umis']].values
         n_barcodes = len(barcodes)
 
         # Process cells in chunks to cap per-iteration memory
@@ -142,8 +143,8 @@ else:
                 'cre_id': pa.array([str(cre_id)] * len(cell_bc_arr), type=pa.string()),
                 'cell_type': pa.array(cell_type_arr, type=pa.string()),
                 'mpra_bc': pa.array(mpra_bc_arr, type=pa.string()),
-                'umis_mpra_bc': pa.array(np.zeros(len(cell_bc_arr), dtype=np.int64)),
-                'umis_transfection_bc': pa.array(u6_arr, type=pa.float64()),
+                'mpra_umis': pa.array(np.zeros(len(cell_bc_arr), dtype=np.int64)),
+                'transfection_umis': pa.array(u6_arr, type=pa.float64()),
             }, schema=schema)
             part_tables.append(tbl)
 
@@ -163,10 +164,10 @@ print("[7] Assembling final table...", flush=True)
 
 # Non-right_only (both + left_only) from original UMI data joined with U6
 non_right = mpra_umi.copy()
-non_right['umis_mpra_bc'] = non_right['umis_mpra_bc'].astype(int)
-both_u6 = u6_umi[['rep_id', 'cell_bc', 'cre_id', 'umis_transfection_bc']]
+non_right['mpra_umis'] = non_right['mpra_umis'].astype(int)
+both_u6 = u6_umi[['rep_id', 'cell_bc', 'cre_id', 'transfection_umis']]
 non_right = non_right.merge(both_u6, on=['rep_id', 'cell_bc', 'cre_id'], how='left')
-non_right['umis_transfection_bc'] = non_right['umis_transfection_bc'].fillna(0)
+non_right['transfection_umis'] = non_right['transfection_umis'].fillna(0)
 non_right['rep_id'] = non_right['rep_id'].astype(str)
 
 print(f"    Non-zero rows: {len(non_right):,}", flush=True)
@@ -175,8 +176,8 @@ print(f"    Non-zero rows: {len(non_right):,}", flush=True)
 non_right_tbl = pa.Table.from_pandas(non_right[list(schema.names)], schema=schema)
 pq.write_table(non_right_tbl, PARTS_DIR / 'non_zero.parquet', compression='snappy')
 
-# Copy parts directly into scMPRA_data parquet directory — no in-memory re-read
-print("[8] Assembling scMPRA_data parquet directory (file copy, no re-read)...", flush=True)
+# Assemble canonical-name partitions, translating cached legacy column names.
+print("[8] Assembling scMPRA_data parquet directory...", flush=True)
 import json as _json
 
 out_scmpra = DATA_ROOT / 'retina_single_counting_u6.scmpra'
@@ -187,12 +188,22 @@ all_parts = sorted(PARTS_DIR.glob('*.parquet'))
 print(f"    Copying {len(all_parts)} part files...", flush=True)
 for i, part_file in enumerate(all_parts):
     dest = data_parquet_dir / f'part.{i}.parquet'
-    shutil.copy2(part_file, dest)
+    columns = pq.read_schema(part_file).names
+    renamed = list(_mpra_column_mapping(columns).values())
+    assert renamed == schema.names, f"{part_file}: unexpected cached columns {columns}"
+    if renamed == columns:
+        shutil.copy2(part_file, dest)
+    else:
+        table = pq.read_table(part_file)
+        converted = table.rename_columns(renamed)
+        assert len(converted) == len(table), f"Part rename changed rows: {len(table)} -> {len(converted)}"
+        pq.write_table(converted, dest, compression='snappy')
     if i % 20 == 0 or i == len(all_parts) - 1:
         print(f"    [{i+1}/{len(all_parts)}] {part_file.name} → {dest.name}", flush=True)
 
 with open(out_scmpra / 'members.json', 'w') as _f:
-    _json.dump({"table_type": "mpra_umiwise", "source": str(out_scmpra)}, _f)
+    _json.dump({"table_type": "mpra_umiwise", "source": str(out_scmpra),
+                "schema_version": scm.MPRA_SCHEMA_VERSION}, _f)
 print(f"    Parquet directory saved: {out_scmpra}", flush=True)
 
 # Cleanup temp parts

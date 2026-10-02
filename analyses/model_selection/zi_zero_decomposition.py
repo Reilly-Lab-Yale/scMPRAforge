@@ -95,16 +95,16 @@ for ds_label, paths in datasets.items():
     # Get observed zero rates from training data
     td = nb_ortho.training_data
     data = td.get_data(include_missing=False)
-    if hasattr(data["umis_mpra_bc"].dtype, "fill_value"):
-        data["umis_mpra_bc"] = data["umis_mpra_bc"].astype("int64")
-    pdf = data[["cell_type", "umis_mpra_bc"]].compute()
+    if hasattr(data["mpra_umis"].dtype, "fill_value"):
+        data["mpra_umis"] = data["mpra_umis"].astype("int64")
+    pdf = data[["cell_type", "mpra_umis"]].compute()
 
     nb_params = nb_ortho.by_cell_type_parameters
     zinb_params = zinb_ortho.by_cell_type_parameters
 
     for ct in sorted(pdf["cell_type"].unique()):
         sub = pdf[pdf["cell_type"] == ct]
-        obs_pct_zero = 100 * (sub["umis_mpra_bc"] == 0).mean()
+        obs_pct_zero = 100 * (sub["mpra_umis"] == 0).mean()
 
         # NB predicted zeros
         mu_nb, theta_nb = get_nb_params(nb_params, ct)

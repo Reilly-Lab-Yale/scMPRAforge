@@ -45,25 +45,25 @@ HERE = Path(__file__).resolve().parent
 OUT = HERE / "output" / "coarse_reporter_pilot"
 STORED = HERE / "output" / "cohen_5x5_activity_summary.tsv"
 PAIR = ["rep_id", "cell_bc", "cell_type", "cre_id"]
-COLS = PAIR + ["umis_mpra_bc"]
+COLS = PAIR + ["mpra_umis"]
 
 
 def collapse(pdf, zero_rule):
     """Keep nonzero rows; add one zero per pair ('strict': only pairs with
     no nonzero row, 'cohen': every pair)."""
     n_pairs = len(pdf[PAIR].drop_duplicates())
-    nz = pdf[pdf["umis_mpra_bc"] > 0]
+    nz = pdf[pdf["mpra_umis"] > 0]
     pairs = pdf[PAIR].drop_duplicates()
     if zero_rule == "strict":
         seen = nz[PAIR].drop_duplicates().assign(_nz=True)
         pairs = pairs.merge(seen, on=PAIR, how="left")
         pairs = pairs[pairs["_nz"].isna()].drop(columns="_nz")
-    zeros = pairs.assign(umis_mpra_bc=0)
+    zeros = pairs.assign(mpra_umis=0)
     out = pd.concat([nz[COLS], zeros[COLS]], ignore_index=True)
     # every delivered pair survives, and no pair gains more than one zero
     assert len(out[PAIR].drop_duplicates()) == n_pairs, \
         f"collapse lost pairs: {n_pairs} -> {len(out[PAIR].drop_duplicates())}"
-    assert (out["umis_mpra_bc"] == 0).sum() <= n_pairs
+    assert (out["mpra_umis"] == 0).sum() <= n_pairs
     return out
 
 

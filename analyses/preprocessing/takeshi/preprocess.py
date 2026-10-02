@@ -8,9 +8,9 @@ Output: takeshi_scmpra_umiwise.scmpra/ (parquet directory)
 Column mapping:
     mBC         -> mpra_bc
     CELL        -> cell_bc
-    mBC_count   -> umis_mpra_bc
+    mBC_count   -> mpra_umis
     Celltype    -> cell_type
-    oBC_count   -> umis_transfection_bc
+    oBC_count   -> transfection_umis
     CRE_name    -> cre_id
     (added)     -> rep_id = "R1"
     error_corrected_mBC -> dropped
@@ -46,9 +46,9 @@ print(f"  Columns: {list(df.columns)}")
 df = df.rename(columns={
     "mBC": "mpra_bc",
     "CELL": "cell_bc",
-    "mBC_count": "umis_mpra_bc",
+    "mBC_count": "mpra_umis",
     "Celltype": "cell_type",
-    "oBC_count": "umis_transfection_bc",
+    "oBC_count": "transfection_umis",
     "CRE_name": "cre_id",
 })
 
@@ -59,8 +59,8 @@ df = df.drop(columns=["error_corrected_mBC", "nCount_RNA"])
 df["rep_id"] = "R1"
 
 # Cast count columns to int
-df["umis_mpra_bc"] = df["umis_mpra_bc"].astype(int)
-df["umis_transfection_bc"] = df["umis_transfection_bc"].astype(int)
+df["mpra_umis"] = df["mpra_umis"].astype(int)
+df["transfection_umis"] = df["transfection_umis"].astype(int)
 
 # Standardize cell type names (remove hyphens for consistency)
 df["cell_type"] = df["cell_type"].replace({"SK-N-SH": "SKNSH"})
@@ -87,9 +87,9 @@ groups = {
 
 for label, sub in groups.items():
     n_rows = len(sub)
-    mean_umi = sub["umis_mpra_bc"].mean()
-    median_umi = sub["umis_mpra_bc"].median()
-    frac_zero = (sub["umis_mpra_bc"] == 0).mean()
+    mean_umi = sub["mpra_umis"].mean()
+    median_umi = sub["mpra_umis"].median()
+    frac_zero = (sub["mpra_umis"] == 0).mean()
     print(f"  {label}:")
     print(f"    rows={n_rows:,}  mean_umi={mean_umi:.3f}  "
           f"median_umi={median_umi:.1f}  frac_zero={frac_zero:.3f}")
@@ -97,14 +97,14 @@ for label, sub in groups.items():
 # Per-CRE breakdown for NA:NA
 print("\n  Per-CRE mean UMI (NA:NA):")
 na_na_stats = (df.loc[is_na_na]
-               .groupby("cre_id")["umis_mpra_bc"]
+               .groupby("cre_id")["mpra_umis"]
                .agg(["mean", "median", "size"])
                .sort_values("mean"))
 print(na_na_stats.to_string(float_format="%.3f"))
 
 # Per-CRE breakdown for variant CREs (just summary stats)
 variant_means = (df.loc[~is_na_na]
-                 .groupby("cre_id")["umis_mpra_bc"]
+                 .groupby("cre_id")["mpra_umis"]
                  .mean())
 print(f"\n  Variant CRE mean UMI: "
       f"min={variant_means.min():.3f}  "
@@ -115,8 +115,8 @@ print(f"\n  Variant CRE mean UMI: "
 print("\n  Per cell-type mean UMI by CRE group:")
 for ct in sorted(df["cell_type"].unique()):
     sub_ct = df[df["cell_type"] == ct]
-    na_mean = sub_ct.loc[is_na_na[sub_ct.index], "umis_mpra_bc"].mean()
-    var_mean = sub_ct.loc[~is_na_na[sub_ct.index], "umis_mpra_bc"].mean()
+    na_mean = sub_ct.loc[is_na_na[sub_ct.index], "mpra_umis"].mean()
+    var_mean = sub_ct.loc[~is_na_na[sub_ct.index], "mpra_umis"].mean()
     print(f"    {ct:8s}  NA:NA={na_mean:.3f}  variant={var_mean:.3f}  "
           f"ratio={na_mean/var_mean:.3f}")
 
@@ -127,7 +127,7 @@ for ct in sorted(df["cell_type"].unique()):
 MIN_PTS = 3
 print(f"\n--- ortho_filter preview (MIN_PTS={MIN_PTS}) ---")
 
-nonzero = df[df["umis_mpra_bc"] > 0]
+nonzero = df[df["mpra_umis"] > 0]
 nz_counts = nonzero.groupby(["cell_type", "cre_id"]).size().reset_index(name="nonzero_count")
 
 # All combos present in data

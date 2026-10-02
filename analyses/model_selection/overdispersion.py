@@ -8,7 +8,7 @@ of them.
 
 For each dataset and each cell type we fit two GLMs to the same design,
 
-    umis_mpra_bc ~ C(cre_id)          log link
+    mpra_umis ~ C(cre_id)          log link
 
 one Poisson and one negative binomial, and compare by AIC. The design
 conditions on CRE identity, so any overdispersion reported here is dispersion
@@ -65,7 +65,18 @@ TRUNCATED_TABLES = {
     "cohen": DATA / "cohen" / "retina_single_counting_u6.tsv",
     "seelig": DATA / "seelig" / "seelig_scmpra_umiwise.tsv.gz",
 }
-COLS = ["cre_id", "cell_type", "umis_mpra_bc"]
+COLS = ["cre_id", "cell_type", "mpra_umis"]
+
+
+def read_counts(path):
+    """Read canonical or legacy published counts without importing the fitting stack."""
+    header = pd.read_csv(path, sep="\t", nrows=0).columns
+    names = [c for c in ["mpra_umis", "umis_mpra_bc"] if c in header]
+    assert len(names) == 1, f"{path}: expected one MPRA count column, got {names}"
+    df = pd.read_csv(path, sep="\t", usecols=["cre_id", "cell_type", names[0]])
+    df = df.rename(columns={names[0]: "mpra_umis"})
+    assert set(df.columns) == set(COLS), f"{path}: unexpected columns {list(df.columns)}"
+    return df
 
 # A cell type needs enough CREs and observations for the comparison to mean
 # anything; below this the NB dispersion is not usefully estimable.
@@ -127,8 +138,8 @@ def fit_nb(y, X, pois):
 
 def analyse(name, path, rows, n_boot, rng):
     print(f"\n=== {name} ===", flush=True)
-    df = pd.read_csv(path, sep="\t", usecols=COLS)
-    df["umis_mpra_bc"] = pd.to_numeric(df["umis_mpra_bc"], errors="coerce").fillna(0)
+    df = read_counts(path)
+    df["mpra_umis"] = pd.to_numeric(df["mpra_umis"], errors="coerce").fillna(0)
     print(f"{len(df):,} rows, {df.cre_id.nunique():,} CREs, "
           f"{df.cell_type.nunique()} cell types", flush=True)
 
@@ -137,7 +148,7 @@ def analyse(name, path, rows, n_boot, rng):
             print(f"  {str(ct)[:24]:26s} skipped (n={len(sub)}, "
                   f"cres={sub.cre_id.nunique()})", flush=True)
             continue
-        y = sub["umis_mpra_bc"].to_numpy(float)
+        y = sub["mpra_umis"].to_numpy(float)
         X = sm.add_constant(
             pd.get_dummies(sub["cre_id"], drop_first=True, dtype=float),
             has_constant="add").to_numpy(float)

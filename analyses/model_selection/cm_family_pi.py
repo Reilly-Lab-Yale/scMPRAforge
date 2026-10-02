@@ -85,14 +85,14 @@ def zero_fraction(ortho, name, expansion):
     """(n_zeros, n_total) over the whole fit, on the denominator it was fit on."""
     dat = ortho.training_data
     data = dat.get_data(include_missing=False)
-    if hasattr(data["umis_mpra_bc"].dtype, "fill_value"):
-        data["umis_mpra_bc"] = data["umis_mpra_bc"].astype("int64")
+    if hasattr(data["mpra_umis"].dtype, "fill_value"):
+        data["mpra_umis"] = data["mpra_umis"].astype("int64")
     obs = scm._to_pandas(data)
-    n_nonzero = int((obs["umis_mpra_bc"] > 0).sum())
+    n_nonzero = int((obs["mpra_umis"] > 0).sum())
 
     if expansion == "preexisting":
         # The table already holds the zeros the fit saw; nothing was added.
-        n_zeros = int((obs["umis_mpra_bc"] == 0).sum())
+        n_zeros = int((obs["mpra_umis"] == 0).sum())
         return n_zeros, n_zeros + n_nonzero
 
     cell_map = obs[["rep_id", "cell_bc", "cell_type"]].drop_duplicates()
@@ -102,10 +102,10 @@ def zero_fraction(ortho, name, expansion):
         reporter = getattr(dat, "_coarse_reporter", None)
         assert reporter is not None, f"{name}: reporter-keyed fit with no reporter table"
         anti = scm.anti_split(SPLIT)
-        nz = obs[obs["umis_mpra_bc"] > 0][[SPLIT, anti, "rep_id", "umis_mpra_bc", "cell_bc"]].copy()
+        nz = obs[obs["mpra_umis"] > 0][[SPLIT, anti, "rep_id", "mpra_umis", "cell_bc"]].copy()
         for frame in (nz, cell_map, mpra_map):
             for col in frame.columns:
-                if col != "umis_mpra_bc":
+                if col != "mpra_umis":
                     frame[col] = frame[col].astype(str)
         levels = sorted(obs[SPLIT].astype(str).unique())
         mode = "single" if expansion == "per_delivery" else "coarse"
@@ -126,7 +126,7 @@ def zero_fraction(ortho, name, expansion):
 
     assert expansion in ("all_combinations", "all_combinations_moi"), \
         f"{name}: unhandled expansion {expansion}"
-    obs_for_maps = (obs.groupby(["rep_id", "cell_bc", "mpra_bc"])["umis_mpra_bc"]
+    obs_for_maps = (obs.groupby(["rep_id", "cell_bc", "mpra_bc"])["mpra_umis"]
                     .sum().reset_index())
     cm_maps = {"cell_map": cell_map, "mpra_map": mpra_map, "observed": obs_for_maps}
     moi_correction = None

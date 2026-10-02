@@ -161,10 +161,10 @@ HYPOTHESIS_OPTIONAL = {"reference_CRE", "reference_cell_type", "meta"}
 HYPOTHESIS_ALL = HYPOTHESIS_REQUIRED | HYPOTHESIS_OPTIONAL
 
 MPRA_READWISE_REQUIRED = {
-    "cell_bc", "rep_id", "cre_id", "cell_type", "mpra_bc", "umi", "reads"
+    "cell_bc", "rep_id", "cre_id", "cell_type", "mpra_bc", "mpra_umi", "mpra_reads"
 }
 MPRA_READWISE_OPTIONAL = {
-    "transfection_bc", "transfection_umi", "reads_transfection_bc", "reads_DNA"
+    "transfection_bc", "transfection_umis", "transfection_reads", "dna_reads"
 }
 MPRA_READWISE_ALLOWED = MPRA_READWISE_REQUIRED | MPRA_READWISE_OPTIONAL
 MPRA_READWISE_COLUMN_ORDER = [
@@ -173,23 +173,23 @@ MPRA_READWISE_COLUMN_ORDER = [
     "cre_id",
     "cell_type",
     "mpra_bc",
-    "umi",
-    "reads",
+    "mpra_umi",
+    "mpra_reads",
     "transfection_bc",
-    "transfection_umi",
-    "reads_transfection_bc",
-    "reads_DNA",
+    "transfection_umis",
+    "transfection_reads",
+    "dna_reads",
 ]
 
-MPRA_UMIWISE_REQUIRED = {"rep_id", "cre_id", "cell_type", "umis_mpra_bc"}
+MPRA_UMIWISE_REQUIRED = {"rep_id", "cre_id", "cell_type", "mpra_umis"}
 MPRA_UMIWISE_OPTIONAL = {
     "cell_bc",
     "mpra_bc",
-    "reads_mpra_bc",
+    "mpra_reads",
     "transfection_bc",
-    "umis_transfection_bc",
-    "reads_transfection_bc",
-    "reads_DNA",
+    "transfection_umis",
+    "transfection_reads",
+    "dna_reads",
 }
 MPRA_UMIWISE_ALLOWED = MPRA_UMIWISE_REQUIRED | MPRA_UMIWISE_OPTIONAL
 MPRA_UMIWISE_COLUMN_ORDER = [
@@ -198,17 +198,17 @@ MPRA_UMIWISE_COLUMN_ORDER = [
     "cre_id",
     "cell_type",
     "mpra_bc",
-    "umis_mpra_bc",
-    "reads_mpra_bc",
+    "mpra_umis",
+    "mpra_reads",
     "transfection_bc",
-    "umis_transfection_bc",
-    "reads_transfection_bc",
-    "reads_DNA",
+    "transfection_umis",
+    "transfection_reads",
+    "dna_reads",
 ]
 
-# added by scMPRA_data itself: cre_id_original keeps each negative control's
-# name once set_negative_controls has relabelled it "reference"
-MPRA_DERIVED_COLUMNS = {"cre_id_original"}
+# Derived annotations: cre_id_original retains negative-control identities;
+# mpra_umis_normalized stores an optional normalized expression measurement.
+MPRA_DERIVED_COLUMNS = {"cre_id_original", "mpra_umis_normalized"}
 # Per-row parameters the simulator writes alongside the counts it drew.
 # They are package output, not part of the input contract a user supplies,
 # so a simulated table still has to type as a plain MPRA table.
@@ -220,13 +220,51 @@ MPRA_FACTOR_COLUMNS = {
     "cre_id",
     "cell_type",
     "mpra_bc",
-    "umi",
+    "mpra_umi",
     "transfection_bc",
-    "transfection_umi",
     "biol_rep",
 }
-MPRA_SPARSE_COUNT_COLUMNS = {"reads", "reads_mpra_bc", "reads_transfection_bc", "reads_DNA", "umis_mpra_bc"}
-MPRA_DENSE_COUNT_COLUMNS = {"umis_transfection_bc"}
+MPRA_COUNT_COLUMNS = {"mpra_reads", "mpra_umis", "transfection_reads", "transfection_umis", "dna_reads"}
+COARSE_REPORTER_COLUMNS = ["rep_id", "cell_bc", "cre_id"]
+MPRA_SCHEMA_VERSION = 2
+MPRA_LEGACY_COLUMNS = {
+    "umi": "mpra_umi",
+    "reads": "mpra_reads",
+    "umis_mpra_bc": "mpra_umis",
+    "reads_mpra_bc": "mpra_reads",
+    "umis_transfection_bc": "transfection_umis",
+    "reads_transfection_bc": "transfection_reads",
+    "reads_DNA": "dna_reads",
+    "normalized_umis_mpra_bc": "mpra_umis_normalized",
+}
+
+
+def _mpra_column_mapping(columns):
+    """Resolve legacy input names without merging competing columns."""
+    columns = list(columns)
+    canonical = [MPRA_LEGACY_COLUMNS.get(c, c) for c in columns]
+    collisions = sorted({c for c in canonical if canonical.count(c) > 1})
+    if collisions:
+        raise ValueError(f"Competing MPRA columns resolve to {collisions}")
+    if "transfection_umi" in columns:
+        raise ValueError(
+            "transfection_umi cannot be paired with MPRA UMI rows; aggregate "
+            "reporter molecules separately, or use set_coarse_reporter() "
+            "for CRE-level detections."
+        )
+    return dict(zip(columns, canonical))
+
+
+def _canonical_mpra_columns(df):
+    return df.rename(columns=_mpra_column_mapping(df.columns))
+
+
+def _read_mpra_parquet(path, columns):
+    """Read projected columns from canonical or legacy Parquet datasets."""
+    mapping = _mpra_column_mapping(pq.ParquetDataset(path).schema.names)
+    source = {new: old for old, new in mapping.items()}
+    pdf = pd.read_parquet(path, columns=[source[c] for c in columns], engine="pyarrow")
+    return _canonical_mpra_columns(pdf)
 
 WARN_MULTI_TRANSFECTION_PERCENT=2.0
 
@@ -288,14 +326,13 @@ def table_type(column_names):
     ret = 'malformed'
     matches = 0
 
-    #TODO: we are currently defining column sets here, when the established pattern was to use constants: fix.
     #TODO: Why do we have both strict and non-strict? Is non-strict actually being used anywhere.
     # Read-wise MPRA (use the names used elsewhere in the codebase)
-    if {'cell_bc','rep_id','cre_id','cell_type','mpra_bc','umi','reads'} <= cols:
+    if MPRA_READWISE_REQUIRED <= cols:
         ret = 'mpra_readwise'; matches += 1
 
     # UMI-wise MPRA
-    if {'rep_id','cre_id','cell_type','umis_mpra_bc'} <= cols:
+    if MPRA_UMIWISE_REQUIRED <= cols:
         ret = 'mpra_umiwise'; matches += 1
 
     # Hypotheses (must have required; optional ok)
@@ -311,6 +348,8 @@ def table_type(column_names):
 
 def _strict_mpra_table_type(column_names):
     cols = set(map(str, column_names))
+    if "dna_reads" in cols and "mpra_bc" not in cols:
+        return "malformed"
     ret = "malformed"
     matches = 0
 
@@ -342,33 +381,42 @@ def _series_unique_str(series):
         vals = series.dropna().astype(str).unique().tolist()
     return [str(v) for v in vals]
 
+def _normalize_mpra_partition(pdf):
+    """Validate counts and identifiers without replacing unknown counts by zero."""
+    pdf = pdf.copy()
+    for col in sorted(MPRA_FACTOR_COLUMNS.intersection(pdf.columns)):
+        values = pdf[col].astype("string[pyarrow]")
+        bad = values.isna() | values.str.strip().eq("").fillna(False)
+        assert not bad.any(), f"{col}: {int(bad.sum())} missing/empty identifiers"
+        pdf[col] = values
+    required_counts = {"mpra_reads"} if "mpra_umi" in pdf else {"mpra_umis"}
+    for col in sorted(MPRA_COUNT_COLUMNS.intersection(pdf.columns)):
+        raw = pdf[col]
+        if isinstance(raw.dtype, pd.SparseDtype):
+            raw = raw.sparse.to_dense()
+        values = pd.to_numeric(raw, errors="raise")
+        bad = values.notna() & ((values < 0) | (values % 1 != 0) | (values >= 2**63))
+        assert not bad.any(), f"{col}: {int(bad.sum())} invalid nonnegative int64 counts"
+        if col in required_counts:
+            assert values.notna().all(), f"{col}: {int(values.isna().sum())} missing required counts"
+            pdf[col] = values.astype("int64").astype(pd.SparseDtype("int64", 0))
+        else:
+            pdf[col] = values.astype("Int64")
+    if "mpra_umi" in pdf and "mpra_reads" in pdf:
+        bad = pdf["mpra_reads"] < 1
+        assert not bad.any(), f"mpra_reads: {int(bad.sum())} read-wise counts below 1"
+    for signal in ["mpra", "transfection"]:
+        reads, umis = f"{signal}_reads", f"{signal}_umis"
+        if reads in pdf and umis in pdf:
+            bad = pdf[reads].notna() & pdf[umis].notna() & (pdf[reads] < pdf[umis])
+            assert not bad.any(), f"{signal}: {int(bad.sum())} read counts below UMI counts"
+    return pdf
+
+
 def _optimize_mpra_ddf(ddf: dd.DataFrame) -> dd.DataFrame:
-    factor_cols = [c for c in MPRA_FACTOR_COLUMNS if c in ddf.columns]
-    for col in factor_cols:
-        ddf[col] = ddf[col].astype("string[pyarrow]")
-
-    for col in sorted(MPRA_SPARSE_COUNT_COLUMNS.intersection(ddf.columns)):
-        if pd.api.types.is_numeric_dtype(ddf[col].dtype):
-            numeric = ddf[col].fillna(0)
-        else:
-            numeric = ddf[col].map_partitions(
-                pd.to_numeric,
-                errors="coerce",
-                meta=(col, "float64"),
-            ).fillna(0)
-        ddf[col] = numeric.astype("int64").astype(pd.SparseDtype("int64", fill_value=0))
-
-    for col in sorted(MPRA_DENSE_COUNT_COLUMNS.intersection(ddf.columns)):
-        if pd.api.types.is_numeric_dtype(ddf[col].dtype):
-            ddf[col] = ddf[col].fillna(0)
-        else:
-            ddf[col] = ddf[col].map_partitions(
-                pd.to_numeric,
-                errors="coerce",
-                meta=(col, "float64"),
-            ).fillna(0)
-
-    return ddf
+    ddf = _canonical_mpra_columns(ddf)
+    meta = _normalize_mpra_partition(ddf._meta)
+    return ddf.map_partitions(_normalize_mpra_partition, meta=meta)
 
 def _densify_sparse_partition(pdf: pd.DataFrame) -> pd.DataFrame:
     pdf = pdf.copy()
@@ -382,7 +430,7 @@ def _prepare_subset_for_modeling(pdf: pd.DataFrame) -> pd.DataFrame:
     Ensure model regressands are dense numeric arrays at fit/design boundaries.
     """
     pdf = pdf.copy()
-    pdf["umis_mpra_bc"] = pd.to_numeric(pdf["umis_mpra_bc"], errors="coerce").fillna(0).astype("int64")
+    pdf["mpra_umis"] = pd.to_numeric(pdf["mpra_umis"], errors="coerce").fillna(0).astype("int64")
     return pdf
 
 import re
@@ -432,7 +480,7 @@ def _mom_from_training_data(data,split,subset,indicies):
     anti=anti_split(split)
 
     #clean up raw training data
-    raw=data[["rep_id","cell_type","cre_id","umis_mpra_bc"]]
+    raw=data[["rep_id","cell_type","cre_id","mpra_umis"]]
     raw=data[data[split]==subset]
     raw=raw.drop(columns=split)
 
@@ -440,12 +488,12 @@ def _mom_from_training_data(data,split,subset,indicies):
     # Compute P(X=0|NB) from *non-zero* observations per CRE.  When the
     # non-zero expression distribution already produces many zeros under NB,
     # ZI is not separable from NB and MoM's estimate is unreliable.
-    nz = raw[raw["umis_mpra_bc"] > 0]
+    nz = raw[raw["mpra_umis"] > 0]
     if len(nz) > 0:
         nz_stats = (
             nz.groupby(anti)
-            .agg(mean_nz=('umis_mpra_bc', 'mean'),
-                 var_nz=('umis_mpra_bc', 'var'))
+            .agg(mean_nz=('mpra_umis', 'mean'),
+                 var_nz=('mpra_umis', 'var'))
             .dropna()
         )
         if len(nz_stats) > 0:
@@ -475,20 +523,20 @@ def _mom_from_training_data(data,split,subset,indicies):
     nb_stats = (
         raw.groupby(anti)
         .agg(
-            mean_umis_mpra_bc=('umis_mpra_bc', 'mean'),
-            var_umis_mpra_bc=('umis_mpra_bc', 'var')
+            mpra_umis_mean=('mpra_umis', 'mean'),
+            mpra_umis_var=('mpra_umis', 'var')
         )
     )
 
     #get that set which are valid nb
-    nb_stats["valid_nb"]=nb_stats["var_umis_mpra_bc"] > nb_stats["mean_umis_mpra_bc"]
+    nb_stats["valid_nb"]=nb_stats["mpra_umis_var"] > nb_stats["mpra_umis_mean"]
 
     # compute rep-level counts including zeros
     zi_stats = (
         raw.groupby(['rep_id', anti])
         .agg(
-            n=('umis_mpra_bc', 'count'),
-            n_zero=('umis_mpra_bc', lambda x: (x == 0).sum())
+            n=('mpra_umis', 'count'),
+            n_zero=('mpra_umis', lambda x: (x == 0).sum())
         )
     )
 
@@ -498,8 +546,8 @@ def _mom_from_training_data(data,split,subset,indicies):
 
     #so a row in zi_stats represents 'for replicate [rep_id] 
     #we see [cre_id] [n] times, of which [n_zero] data points are zero
-    #that cre, across all reps, has a mean of [mean_umis_mpra_bc] and a 
-    #variance of [var_umis_mpra_bc].' 
+    #that cre, across all reps, has a mean of [mpra_umis_mean] and a
+    #variance of [mpra_umis_var].'
     
     
     
@@ -509,14 +557,14 @@ def _mom_from_training_data(data,split,subset,indicies):
     
     
     #compute nb params
-    zi_stats["p"]=zi_stats["mean_umis_mpra_bc"]/zi_stats["var_umis_mpra_bc"]
-    zi_stats["r"]=zi_stats["mean_umis_mpra_bc"]**2 / (zi_stats["var_umis_mpra_bc"] - zi_stats["mean_umis_mpra_bc"])
+    zi_stats["p"]=zi_stats["mpra_umis_mean"]/zi_stats["mpra_umis_var"]
+    zi_stats["r"]=zi_stats["mpra_umis_mean"]**2 / (zi_stats["mpra_umis_var"] - zi_stats["mpra_umis_mean"])
     
     zi_stats["nb_zero_prop"]=np.nan
     #fill out valid nb cases with zero proportion...
     zi_stats.loc[zi_stats["valid_nb"],"nb_zero_prop"]=zi_stats["p"]**zi_stats["r"]
     #fill out non-valid nb cases with zero portion using poisson
-    zi_stats.loc[~zi_stats["valid_nb"],"nb_zero_prop"]=np.exp(-zi_stats["mean_umis_mpra_bc"])
+    zi_stats.loc[~zi_stats["valid_nb"],"nb_zero_prop"]=np.exp(-zi_stats["mpra_umis_mean"])
 
     assert ~any(zi_stats["nb_zero_prop"].isna())  #TODO: add a message
 
@@ -533,18 +581,18 @@ def _mom_from_training_data(data,split,subset,indicies):
 
     #now calculate nb betas
     working_nb=nb_stats.copy()
-    ref=working_nb.loc["reference"]["mean_umis_mpra_bc"]
-    working_nb["fc"]=working_nb["mean_umis_mpra_bc"]/ref
+    ref=working_nb.loc["reference"]["mpra_umis_mean"]
+    working_nb["fc"]=working_nb["mpra_umis_mean"]/ref
     working_nb["lfc"]=np.log(working_nb["fc"])
     working_nb["beta"]=working_nb["lfc"]
-    working_nb["beta"].loc["reference"]=np.log(working_nb["mean_umis_mpra_bc"].loc["reference"])
+    working_nb["beta"].loc["reference"]=np.log(working_nb["mpra_umis_mean"].loc["reference"])
     
     nb_betas=working_nb["beta"]
 
     
     #now calculate theta betas
     working_nb=nb_stats.copy()
-    thetas=working_nb["mean_umis_mpra_bc"]**2/(working_nb["var_umis_mpra_bc"]-working_nb["mean_umis_mpra_bc"])
+    thetas=working_nb["mpra_umis_mean"]**2/(working_nb["mpra_umis_var"]-working_nb["mpra_umis_mean"])
     thetas=thetas[working_nb["valid_nb"]]
     beta_theta=np.log(np.mean(thetas))
 
@@ -1319,6 +1367,51 @@ class scMPRA_data:
         self.consider_missing_subset_semantics="full_replicate"
         self._consider_missing_cache=None
         self._ortho_filter_applied=False
+        self.schema_version=MPRA_SCHEMA_VERSION
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # Pickled training data can contain an embedded legacy dataframe.
+        if self.data is not None:
+            self.data = _canonical_mpra_columns(self.data)
+        self.schema_version = MPRA_SCHEMA_VERSION
+        self._consider_missing_cache = None
+
+    def validate(self):
+        """Check schema, values, observation keys, and annotation consistency.
+
+        This computes global checks on the stored rows, without expanding
+        missing observations. Loaders validate values lazily as data are read.
+        """
+        ddf = _optimize_mpra_ddf(self._raw_ddf())
+        columns = set(ddf.columns) - MPRA_DERIVED_COLUMNS - MPRA_SIMULATION_COLUMNS
+        kind = _strict_mpra_table_type(columns)
+        if kind == "malformed":
+            raise ValueError(f"Malformed MPRA columns: {sorted(columns)}")
+        checks = {}
+        if {"cell_bc", "mpra_bc"} <= columns:
+            observation = ["rep_id", "cell_bc", "mpra_bc"]
+            if "transfection_bc" in columns:
+                observation.append("transfection_bc")
+            key = observation + (["mpra_umi"] if kind == "mpra_readwise" else [])
+            checks["duplicate observation keys"] = ddf.map_partitions(len).sum() - ddf[key].drop_duplicates().map_partitions(len).sum()
+            for col in ["transfection_umis", "transfection_reads"]:
+                if col in columns:
+                    unique = ddf[observation + [col]].drop_duplicates()
+                    checks[f"conflicting {col} annotations"] = (unique.groupby(observation).size() > 1).sum()
+        for keys, value in [(["rep_id", "cell_bc"], "cell_type"),
+                            (["rep_id", "mpra_bc"], "cre_id"),
+                            (["rep_id", "mpra_bc"], "dna_reads")]:
+            if set(keys + [value]) <= columns:
+                unique = ddf[keys + [value]].drop_duplicates()
+                checks[f"conflicting {value} for {keys}"] = (unique.groupby(keys).size() > 1).sum()
+        # Include a scan even for anonymous simulation rows with no key checks.
+        results = dask.compute(ddf.map_partitions(len).sum(), *checks.values())
+        for name, count in zip(checks, results[1:]):
+            assert count == 0, f"{name}: {count} (input rows: {results[0]})"
+        self.data = ddf
+        self.table_type = kind
+        return self
 
     def _ensure_consider_missing_defaults(self):
         """
@@ -1361,23 +1454,37 @@ class scMPRA_data:
         Required columns: rep_id, cell_bc, cre_id.
         Used with phantom_compress=True to compute reporter-informed zeros
         at fit time without materializing the expanded dataset.
+        The detection table is stored in _coarse_reporter and serialized in
+        members.pkl alongside the main Parquet table by to_parquet().
 
         Parameters
         ----------
         reporter : str, Path, or pandas DataFrame
-            Path to a TSV/CSV file, or a pre-loaded DataFrame.
+            Path to a TSV file, or a pre-loaded DataFrame. Each row must
+            represent a positive detection. Extra columns are discarded;
+            supplied reporter counts must be positive integers.
         """
         if isinstance(reporter, (str, Path)):
-            reporter = pd.read_csv(str(reporter), sep='\t')
-        #TODO: define this "required" in a constant at the beginning, matching pattern
-        required = {"rep_id", "cell_bc", "cre_id"}
+            reporter = pd.read_csv(str(reporter), sep='\t', dtype=str, keep_default_na=False, na_values=[""])
+        required = set(COARSE_REPORTER_COLUMNS)
         missing = required - set(reporter.columns)
         if missing:
             raise ValueError(f"Coarse reporter table missing columns: {sorted(missing)}")
-        # Deduplicate to one row per (rep, cell, CRE) detection
-        reporter = reporter[list(required)].drop_duplicates().reset_index(drop=True)
-        for col in required:
-            reporter[col] = reporter[col].astype(str)
+        for col in ["transfection_umis", "transfection_reads", "umis_transfection_bc", "reads_transfection_bc"]:
+            if col in reporter:
+                counts = pd.to_numeric(reporter[col], errors="raise")
+                bad = counts.isna() | (counts <= 0) | (counts % 1 != 0) | (counts >= 2**63)
+                assert not bad.any(), f"Coarse reporter {col}: {int(bad.sum())} non-positive/invalid detections"
+        n_in = len(reporter)
+        reporter = reporter[COARSE_REPORTER_COLUMNS].copy()
+        for col in COARSE_REPORTER_COLUMNS:
+            values = reporter[col].astype("string[pyarrow]")
+            bad = values.isna() | values.str.strip().eq("").fillna(False)
+            assert not bad.any(), f"Coarse reporter {col}: {int(bad.sum())} missing/empty identifiers"
+            reporter[col] = values
+        reporter = reporter.drop_duplicates().reset_index(drop=True)
+        assert len(reporter) <= n_in, f"Reporter dedup grew rows: {n_in} -> {len(reporter)}"
+        assert not reporter.duplicated().any(), f"Reporter has {int(reporter.duplicated().sum())} duplicate keys"
         self._coarse_reporter = reporter
         logger.info(
             f"Coarse reporter attached: {len(self._coarse_reporter):,} "
@@ -1391,7 +1498,7 @@ class scMPRA_data:
             "cre_id": pd.Series([], dtype="string[pyarrow]"),
             "cell_type": pd.Series([], dtype="string[pyarrow]"),
             "mpra_bc": pd.Series([], dtype="string[pyarrow]"),
-            "umis_mpra_bc": pd.Series([], dtype="int64"),
+            "mpra_umis": pd.Series([], dtype="int64"),
         })
         return _optimize_mpra_ddf(dd.from_pandas(meta, npartitions=1))
 
@@ -1400,7 +1507,7 @@ class scMPRA_data:
         if self.table_type != "mpra_umiwise":
             raise ValueError("consider_missing policy only supports UMI-wise tables.")
 
-        required = {"rep_id", "cell_bc", "cell_type", "mpra_bc", "cre_id", "umis_mpra_bc"}
+        required = {"rep_id", "cell_bc", "cell_type", "mpra_bc", "cre_id", "mpra_umis"}
         ddf = self._raw_ddf()
         missing_cols = sorted(required.difference(set(map(str, ddf.columns))))
         if missing_cols:
@@ -1414,15 +1521,15 @@ class scMPRA_data:
         if cache is not None and cache.get("key") == key:
             return cache
 
-        working = ddf[["rep_id", "cell_bc", "cell_type", "mpra_bc", "cre_id", "umis_mpra_bc"]]
+        working = ddf[["rep_id", "cell_bc", "cell_type", "mpra_bc", "cre_id", "mpra_umis"]]
         for col in ["rep_id", "cell_bc", "cell_type", "mpra_bc", "cre_id"]:
             null_count = int(working[col].isna().sum().compute())
             if null_count:
                 raise ValueError(f"Column '{col}' contains {null_count} missing values; cannot impute mappings.")
             working[col] = working[col].astype("string[pyarrow]")
 
-        working["umis_mpra_bc"] = working["umis_mpra_bc"].map_partitions(
-            pd.to_numeric, errors="coerce", meta=("umis_mpra_bc", "float64")
+        working["mpra_umis"] = working["mpra_umis"].map_partitions(
+            pd.to_numeric, errors="coerce", meta=("mpra_umis", "float64")
         ).fillna(0).astype("int64")
 
         cell_map = working[["rep_id", "cell_bc", "cell_type"]].drop_duplicates()
@@ -1459,7 +1566,7 @@ class scMPRA_data:
             )
 
         observed = (
-            working.groupby(["rep_id", "cell_bc", "mpra_bc"])["umis_mpra_bc"]
+            working.groupby(["rep_id", "cell_bc", "mpra_bc"])["mpra_umis"]
             .sum()
             .reset_index()
         )
@@ -1503,8 +1610,8 @@ class scMPRA_data:
 
         full = cell_subset.merge(mpra_subset, on="rep_id", how="inner")
         expanded = full.merge(observed, on=["rep_id", "cell_bc", "mpra_bc"], how="left")
-        expanded["umis_mpra_bc"] = expanded["umis_mpra_bc"].fillna(0).astype("int64")
-        expanded = expanded[["cell_bc", "rep_id", "cre_id", "cell_type", "mpra_bc", "umis_mpra_bc"]]
+        expanded["mpra_umis"] = expanded["mpra_umis"].fillna(0).astype("int64")
+        expanded = expanded[["cell_bc", "rep_id", "cre_id", "cell_type", "mpra_bc", "mpra_umis"]]
         return _optimize_mpra_ddf(expanded)
 
     def get_data(
@@ -1571,15 +1678,15 @@ class scMPRA_data:
             logger.warning("Overtransfection flattening already performed. Skipping.")
             return
         
-        groupby_columns=list(set(self.data.columns)-{"umis_mpra_bc"})
+        groupby_columns=list(set(self.data.columns)-{"mpra_umis"})
 
-        umis_in=self.data["umis_mpra_bc"].sum()
+        umis_in=self.data["mpra_umis"].sum()
         #dropna=False: a NaN in any key column (e.g. cre_id_original when
         #set_negative_controls was never called) would otherwise take the row
         #with it, silently.
         self.data= self.data.groupby(groupby_columns,dropna=False).agg("sum").reset_index()
-        assert self.data["umis_mpra_bc"].sum()==umis_in, \
-            f"flattening changed total UMIs: {umis_in} -> {self.data['umis_mpra_bc'].sum()}"
+        assert self.data["mpra_umis"].sum()==umis_in, \
+            f"flattening changed total UMIs: {umis_in} -> {self.data['mpra_umis'].sum()}"
         self.operations.append("overtransfection_flattened")
     
     def overtransfected(self, log=True, threshold_pct=WARN_MULTI_TRANSFECTION_PERCENT):
@@ -1699,8 +1806,8 @@ class scMPRA_data:
     
     def total_umi(self):
         #the same cell barcode in two different replicates is NOT the same cell. 
-        umis_per_cell = self.data.groupby(["cell_bc","rep_id"],as_index=False)["umis_mpra_bc"].sum()
-        mask = umis_per_cell["umis_mpra_bc"] < 1
+        umis_per_cell = self.data.groupby(["cell_bc","rep_id"],as_index=False)["mpra_umis"].sum()
+        mask = umis_per_cell["mpra_umis"] < 1
 
         if _is_ddf(umis_per_cell):
             total_cells = int(umis_per_cell[["cell_bc", "rep_id"]].drop_duplicates().shape[0].compute())
@@ -1713,7 +1820,7 @@ class scMPRA_data:
         logger.info(f"Dropping {num_cells_to_drop} cells with no MPRA UMIs, leaving {total_cells-num_cells_to_drop}.")
 
         umis_per_cell = umis_per_cell[~mask]
-        umis_per_cell = umis_per_cell.assign(ln_cell_umis_mpra=np.log(umis_per_cell["umis_mpra_bc"]))
+        umis_per_cell = umis_per_cell.assign(ln_cell_umis_mpra=np.log(umis_per_cell["mpra_umis"]))
 
         self.data = self.data.merge(
             umis_per_cell[["cell_bc","rep_id","ln_cell_umis_mpra"]],
@@ -1726,12 +1833,16 @@ class scMPRA_data:
     @classmethod
     def from_tsv(cls, filepath):
         """
-        Returns a <scMPRA_data> object with data loaded from `filepath`.
+        Load a canonical or legacy MPRA TSV, preserving string identifiers.
+        Values are checked when partitions are computed; validate() also
+        checks observation keys and annotation consistency across partitions.
         """
         # Smaller blocks -> more partitions -> better concurrency on load
-        tab = dd.read_csv(filepath, sep="\t", blocksize="32MB")
+        tab = dd.read_csv(filepath, sep="\t", blocksize="32MB", dtype=str,
+                          keep_default_na=False, na_values=[""])
+        tab = _canonical_mpra_columns(tab)
         tabtype = _strict_mpra_table_type(tab.columns)
-        assert tabtype in {"mpra_readwise", "mpra_umiwise"}, "Malformed table."
+        assert tabtype in {"mpra_readwise", "mpra_umiwise"}, f"Malformed table: {list(tab.columns)}"
 
         ret = cls()
         ret.data = _optimize_mpra_ddf(tab)
@@ -1758,9 +1869,15 @@ class scMPRA_data:
         if (base / "members.pkl").exists():
             with open(base / "members.pkl", "rb") as f:
                 meta_dict.update(pickle.load(f))
+        version = meta_dict.get("schema_version", 1)
+        if version not in (1, MPRA_SCHEMA_VERSION):
+            raise ValueError(f"Unsupported MPRA schema_version {version} at {path}")
         for k, v in meta_dict.items():
             setattr(ret, k, v)
+        ret.schema_version = MPRA_SCHEMA_VERSION
         ret._ensure_consider_missing_defaults()
+        if getattr(ret, "_coarse_reporter", None) is not None:
+            ret.set_coarse_reporter(ret._coarse_reporter)
 
         # columns the package adds itself are not part of the input contract
         # A column named "Unnamed: N" is a pandas index that survived a
@@ -1787,11 +1904,17 @@ class scMPRA_data:
         Saves to a parquet directory using gzip compression.
         Takes full path, /path/to/data.scmpra
         WILL clobber existing files with the same path.
+        Writes canonical column names and schema_version in members.json.
+        Non-JSON members, including the coarse reporter, go in members.pkl.
         """
         base = Path(path)
         base.mkdir(parents=True, exist_ok=True)
 
-        ddf = self.data if _is_ddf(self.data) else dd.from_pandas(self.data, npartitions=2)
+        ddf = _optimize_mpra_ddf(self._raw_ddf())
+        columns = set(ddf.columns) - MPRA_DERIVED_COLUMNS - MPRA_SIMULATION_COLUMNS
+        kind = _strict_mpra_table_type(columns)
+        if kind != self.table_type or kind == "malformed":
+            raise ValueError(f"Cannot save {self.table_type}: columns type as {kind}: {sorted(columns)}")
         if self.table_type == "mpra_readwise":
             keep = [c for c in MPRA_READWISE_COLUMN_ORDER if c in ddf.columns]
         elif self.table_type == "mpra_umiwise":
@@ -1809,6 +1932,7 @@ class scMPRA_data:
         ddf.to_parquet(base / "data.parquet", engine="pyarrow", compression="gzip", write_index=False, overwrite=True)
 
         nondata = {key: val for key, val in self.__dict__.items() if key not in {"data", "_consider_missing_cache"}}
+        nondata["schema_version"] = MPRA_SCHEMA_VERSION
         # a member goes to JSON only if it survives the round trip unchanged;
         # anything else (a DataFrame, a tuple) is pickled rather than str()-ed
         def _json_exact(v):
@@ -1844,7 +1968,7 @@ class scMPRA_data:
         """
         assert table_type(self.data.columns) == "mpra_readwise"
 
-        sns.histplot(_to_pandas(self.data["reads"]), *args, **kwargs)
+        sns.histplot(_to_pandas(self.data["mpra_reads"]), *args, **kwargs)
 
         plt.xlabel('Reads')
         plt.ylabel('Frequency')
@@ -1853,27 +1977,32 @@ class scMPRA_data:
     
     def read_wise_to_umi_wise(self,keep_reads=False):
         """
-        Converts read-wise to UMI-wise (see readme for spec).
-
-        TODO: test again now that its moved to scMPRA data obj
+        Count MPRA UMIs per observation, optionally retaining summed reads.
+        Reporter and DNA counts are repeated annotations, not additive counts.
         """
-
         assert self.table_type == "mpra_readwise", "Wrong table type."
-        
-        grouping_columns = [col for col in self.data.columns if col not in ['umi', 'reads']]
-
-        umis = self.data.groupby(grouping_columns)["umi"].nunique().reset_index()
-        umis = umis.rename(columns={"umi": "umis_mpra_bc"})
-
+        self.validate()
+        data = self.data.map_partitions(_densify_sparse_partition,
+                                        meta=_densify_sparse_partition(self.data._meta))
+        keys = ["rep_id", "cell_bc", "mpra_bc"]
+        if "transfection_bc" in data.columns:
+            keys.append("transfection_bc")
+        annotations = [c for c in data.columns if c not in keys + ["mpra_umi", "mpra_reads"]]
+        aggregations = {c: "first" for c in annotations}
+        aggregations["mpra_umi"] = "count"
         if keep_reads:
-            reads = self.data.groupby(grouping_columns)["reads"].sum().reset_index()
-            reads = reads.rename(columns={"reads": "reads_mpra_bc"})
-            grouped = umis.merge(reads, on=grouping_columns, how="left")
-        else:
-            grouped = umis
-
-        self.data = _optimize_mpra_ddf(grouped if _is_ddf(grouped) else dd.from_pandas(grouped, npartitions=2))
+            aggregations["mpra_reads"] = "sum"
+        grouped = data.groupby(keys).agg(aggregations).reset_index().rename(columns={"mpra_umi": "mpra_umis"})
+        n_in, n_out, umis_out = dask.compute(data.map_partitions(len).sum(),
+                                            grouped.map_partitions(len).sum(), grouped["mpra_umis"].sum())
+        assert n_out <= n_in, f"UMI aggregation grew rows: {n_in} -> {n_out}"
+        assert umis_out == n_in, f"UMI aggregation changed molecules: {n_in} -> {umis_out}"
+        if keep_reads:
+            reads_in, reads_out = dask.compute(data["mpra_reads"].sum(), grouped["mpra_reads"].sum())
+            assert reads_in == reads_out, f"UMI aggregation changed reads: {reads_in} -> {reads_out}"
+        self.data = _optimize_mpra_ddf(grouped)
         self.table_type = "mpra_umiwise"
+        self._consider_missing_cache = None
         self.operations.append("read_wise_to_umi_wise")
     
     def cut_chimeric_reads(self,threshold):
@@ -1889,10 +2018,10 @@ class scMPRA_data:
         assert threshold >=0, "threshold must be greater than zero."
         
         #Trim
-        ret=self.data[self.data["reads"]>threshold]
+        ret=self.data[self.data["mpra_reads"]>threshold]
 
-        original_umi_count = int(_to_pandas(self.data["umi"].nunique()))
-        cut_umi_count = int(_to_pandas(ret["umi"].nunique()))
+        original_umi_count = int(_to_pandas(self.data["mpra_umi"].nunique()))
+        cut_umi_count = int(_to_pandas(ret["mpra_umi"].nunique()))
 
         logger.info(f"Original={original_umi_count} UMIs, Cut={cut_umi_count} UMIs, Lost={original_umi_count-cut_umi_count} UMIs.")
 
@@ -1912,17 +2041,17 @@ class scMPRA_data:
         ddf = self.data
 
         # Ensure numeric counts; remain on Dask
-        if pd.api.types.is_numeric_dtype(ddf["umis_mpra_bc"].dtype):
-            ddf = ddf.assign(umis_mpra_bc=ddf["umis_mpra_bc"].fillna(0))
+        if pd.api.types.is_numeric_dtype(ddf["mpra_umis"].dtype):
+            ddf = ddf.assign(mpra_umis=ddf["mpra_umis"].fillna(0))
         else:
-            numeric = ddf["umis_mpra_bc"].map_partitions(
-                pd.to_numeric, errors="coerce", meta=("umis_mpra_bc", "float64")
+            numeric = ddf["mpra_umis"].map_partitions(
+                pd.to_numeric, errors="coerce", meta=("mpra_umis", "float64")
             ).fillna(0)
-            ddf = ddf.assign(umis_mpra_bc=numeric)
+            ddf = ddf.assign(mpra_umis=numeric)
 
         # Count non-zero observations per key
         nonzero_counts = (
-            ddf[ddf["umis_mpra_bc"] > 0]
+            ddf[ddf["mpra_umis"] > 0]
             .groupby(["cell_type", "cre_id"]).size()
             .to_frame("nonzero_count")
         )
@@ -2067,9 +2196,9 @@ triples
 """
 
 #suggested formulas. 
-#SUGGESTED_NB=['reads_mpra_bc ~ C(cell_type)*C(cre_id)',
-#    'reads_mpra_bc ~ C(cell_type)',
-#    'reads_mpra_bc ~ umis_transfection_bc:C(cell_type) + umis_transfection_bc:C(cre_id) + umis_transfection_bc:C(cell_type):C(cre_id) -1']
+#SUGGESTED_NB=['mpra_reads ~ C(cell_type)*C(cre_id)',
+#    'mpra_reads ~ C(cell_type)',
+#    'mpra_reads ~ transfection_umis:C(cell_type) + transfection_umis:C(cre_id) + transfection_umis:C(cell_type):C(cre_id) -1']
 #SUGGESTED_ZI=['C(replicate)']
 #SUGGESTED_BREAKBY=['']
 
@@ -2136,9 +2265,9 @@ def _smart_matrix(data,split):
         )
 
     zi_formula="C(rep_id)-1"
-    nb_formula=f"umis_mpra_bc ~ C({anti}, contr.treatment(base='{reference}'))"
+    nb_formula=f"mpra_umis ~ C({anti}, contr.treatment(base='{reference}'))"
     
-    y = data[["umis_mpra_bc"]]
+    y = data[["mpra_umis"]]
     X = Formula(nb_formula.split('~')[1].strip()).get_model_matrix(data, output='sparse')
     Z = Formula(zi_formula).get_model_matrix(data, output='sparse')
     
@@ -2204,7 +2333,7 @@ def _cm_group_totals(pd_maps, split, level, moi_correction=None):
     obs_relevant = obs_with_cell.merge(
         mpra_subset[["rep_id", "mpra_bc", "cre_id"]].drop_duplicates(),
         on=["rep_id", "mpra_bc"], how="inner")
-    nz = obs_relevant[obs_relevant["umis_mpra_bc"] > 0]
+    nz = obs_relevant[obs_relevant["mpra_umis"] > 0]
 
     if len(nz) > 0:
         nz_counts = (nz.groupby(["rep_id", anti_col])
@@ -2306,12 +2435,12 @@ def _build_cm_fit_inputs(pd_maps, split, level, moi_correction=None):
     obs_relevant = obs_with_cell.merge(
         mpra_subset[["rep_id", "mpra_bc", "cre_id"]],
         on=["rep_id", "mpra_bc"], how="inner")
-    nz = obs_relevant[obs_relevant["umis_mpra_bc"] > 0]
+    nz = obs_relevant[obs_relevant["mpra_umis"] > 0]
 
     # ── Build compressed arrays ────────────────────────────────────────
     # Nonzero observations: individual rows, weight=1
     if len(nz) > 0:
-        comp_y_nz = nz["umis_mpra_bc"].values.astype(np.int64)
+        comp_y_nz = nz["mpra_umis"].values.astype(np.int64)
         comp_w_nz = np.ones(len(nz), dtype=np.float64)
         nb_cols_nz = nz[anti_col].map(anti_to_nb_col).values.astype(np.int32)
         zi_cols_nz = nz["rep_id"].map(rep_to_zi_col).values.astype(np.int32)
@@ -2364,7 +2493,7 @@ def _build_cm_fit_inputs(pd_maps, split, level, moi_correction=None):
         shape=(n_c, n_zi_cols))
 
     # ── Column names matching formulaic conventions ────────────────────
-    nb_formula = f"umis_mpra_bc ~ C({anti}, contr.treatment(base='{reference}'))"
+    nb_formula = f"mpra_umis ~ C({anti}, contr.treatment(base='{reference}'))"
     zi_formula = "C(rep_id)-1"
 
     nb_names = ["Intercept"]
@@ -2379,7 +2508,7 @@ def _build_cm_fit_inputs(pd_maps, split, level, moi_correction=None):
     return {
         'nb_regressors': comp_nb,
         'nb_regressor_names': nb_names,
-        'regressand': pd.DataFrame({"umis_mpra_bc": comp_y}),
+        'regressand': pd.DataFrame({"mpra_umis": comp_y}),
         'zi_regressors': comp_zi,
         'zi_regressor_names': zi_names,
         'model_type': model_type,
@@ -2440,7 +2569,7 @@ def _reporter_zero_counts(nz_pdf, reporter, mpra_map, cell_map, split, levels,
 
     # Observed barcodes per (rep, cell, CRE) from nonzero data
     # First, recover cre_id for each nonzero obs via mpra_map
-    # nz_pdf has [split, anti, rep_id, umis_mpra_bc] but NOT mpra_bc/cre_id
+    # nz_pdf has [split, anti, rep_id, mpra_umis] but NOT mpra_bc/cre_id
     # We need to count nonzero obs per (rep, cell, CRE). But nz_pdf doesn't
     # have cell_bc either -- it has cell_type and cre_id depending on split.
     #
@@ -2524,7 +2653,7 @@ def _build_obs_phantom_inputs(nz_pdf, total_counts, split, level,
     counts in the data, NOT from a Cartesian product of maps.
 
     nz_pdf: pandas DataFrame of nonzero observations for this level.
-            Columns must include: anti_col, rep_id, umis_mpra_bc
+            Columns must include: anti_col, rep_id, mpra_umis
     total_counts: pandas DataFrame with columns [anti_col, rep_id, n_total]
                   giving total observation count per (anti, rep) group.
     """
@@ -2580,7 +2709,7 @@ def _build_obs_phantom_inputs(nz_pdf, total_counts, split, level,
     # ── Build compressed arrays ────────────────────────────────────────
     anti_col = anti
     if len(nz_pdf) > 0:
-        comp_y_nz = nz_pdf["umis_mpra_bc"].values.astype(np.int64)
+        comp_y_nz = nz_pdf["mpra_umis"].values.astype(np.int64)
         comp_w_nz = np.ones(len(nz_pdf), dtype=np.float64)
         nb_cols_nz = nz_pdf[anti_col].map(anti_to_nb_col).values.astype(np.int32)
         zi_cols_nz = nz_pdf["rep_id"].map(rep_to_zi_col).values.astype(np.int32)
@@ -2625,7 +2754,7 @@ def _build_obs_phantom_inputs(nz_pdf, total_counts, split, level,
         shape=(n_c, n_zi_cols))
 
     # ── Column names matching formulaic conventions ────────────────────
-    nb_formula = f"umis_mpra_bc ~ C({anti}, contr.treatment(base='{reference}'))"
+    nb_formula = f"mpra_umis ~ C({anti}, contr.treatment(base='{reference}'))"
     zi_formula = "C(rep_id)-1"
 
     nb_names = ["Intercept"]
@@ -2640,7 +2769,7 @@ def _build_obs_phantom_inputs(nz_pdf, total_counts, split, level,
     return {
         'nb_regressors': comp_nb,
         'nb_regressor_names': nb_names,
-        'regressand': pd.DataFrame({"umis_mpra_bc": comp_y}),
+        'regressand': pd.DataFrame({"mpra_umis": comp_y}),
         'zi_regressors': comp_zi,
         'zi_regressor_names': zi_names,
         'model_type': model_type,
@@ -2662,7 +2791,7 @@ def _tensorzinb_fit(matricies,name,init_method="nb",init_vals=None,use_gpu=False
     nb_only=True fits a plain NB model (no zero-inflation component).
     """
     import scipy.sparse as sp
-    endog = matricies["regressand"]["umis_mpra_bc"].to_numpy().squeeze()
+    endog = _canonical_mpra_columns(matricies["regressand"])["mpra_umis"].to_numpy().squeeze()
     nb_X = matricies["nb_regressors"]
     zi_X = matricies["zi_regressors"]
     sample_weight = matricies.get("weights", None)
@@ -2911,8 +3040,8 @@ def standard_fit(client,data,split,disable_mom=False,fit_resources={},pre_fit_ho
         anti = anti_split(split)
 
         # Small Dask ops on the nonzero-only main data (~3M rows)
-        nz_cols = [split, anti, "rep_id", "umis_mpra_bc", "cell_bc"]
-        nz_pdf = raw[raw["umis_mpra_bc"] > 0][nz_cols].compute()
+        nz_cols = [split, anti, "rep_id", "mpra_umis", "cell_bc"]
+        nz_pdf = raw[raw["mpra_umis"] > 0][nz_cols].compute()
         for col in [split, anti, "rep_id"]:
             nz_pdf[col] = nz_pdf[col].astype(str)
 
@@ -2923,7 +3052,7 @@ def standard_fit(client,data,split,disable_mom=False,fit_resources={},pre_fit_ho
                     .drop_duplicates().compute())
         for df in [cell_map, mpra_map]:
             for col in df.columns:
-                if col != "umis_mpra_bc":
+                if col != "mpra_umis":
                     df[col] = df[col].astype(str)
 
         # Compute reporter-informed zero counts per (anti, rep) group
@@ -3542,8 +3671,8 @@ class ortho:
         use_missing = bool(getattr(scMPRAdat, "consider_missing_enabled", False))
         data = scMPRAdat.get_data(include_missing=False)
         # Ensure dense dtype for groupby -- sparse breaks Dask metadata inference
-        if hasattr(data["umis_mpra_bc"].dtype, 'fill_value'):
-            data["umis_mpra_bc"] = data["umis_mpra_bc"].astype("int64")
+        if hasattr(data["mpra_umis"].dtype, 'fill_value'):
+            data["mpra_umis"] = data["mpra_umis"].astype("int64")
 
         # For CM phantom orthos, gather maps and MOI correction info so we
         # can call _cm_group_totals (the same function used at fit time).
@@ -3554,11 +3683,11 @@ class ortho:
             cell_map = obs_pdf[["rep_id", "cell_bc", "cell_type"]].drop_duplicates()
             mpra_map = obs_pdf[["rep_id", "mpra_bc", "cre_id"]].drop_duplicates()
             # observed must match _get_missing_maps format: only
-            # [rep_id, cell_bc, mpra_bc, umis_mpra_bc] -- extra columns
+            # [rep_id, cell_bc, mpra_bc, mpra_umis] -- extra columns
             # (cre_id, cell_type) cause suffix collisions in merges inside
             # _cm_group_totals.
             obs_for_maps = (obs_pdf.groupby(["rep_id", "cell_bc", "mpra_bc"])
-                            ["umis_mpra_bc"].sum().reset_index())
+                            ["mpra_umis"].sum().reset_index())
             cm_maps = {"cell_map": cell_map, "mpra_map": mpra_map, "observed": obs_for_maps}
 
             if fit_mode == "cm_phantom_moib":
@@ -3587,8 +3716,8 @@ class ortho:
             assert reporter is not None, (
                 "obs_phantom ortho has no coarse reporter on its training "
                 "data; cannot reconstruct the denominator the fit used")
-            nz_cols = [split, anti, "rep_id", "umis_mpra_bc", "cell_bc"]
-            nz_pdf = _to_pandas(data[data["umis_mpra_bc"] > 0][nz_cols])
+            nz_cols = [split, anti, "rep_id", "mpra_umis", "cell_bc"]
+            nz_pdf = _to_pandas(data[data["mpra_umis"] > 0][nz_cols])
             for col in [split, anti, "rep_id"]:
                 nz_pdf[col] = nz_pdf[col].astype(str)
             cell_map = _to_pandas(
@@ -3627,7 +3756,7 @@ class ortho:
                 )
                 anti_col = anti
                 obs_sum = _to_pandas(
-                    subset.groupby([anti, "rep_id"])["umis_mpra_bc"].sum()
+                    subset.groupby([anti, "rep_id"])["mpra_umis"].sum()
                 )
                 obs_sum.name = "obs_sum"
 
@@ -3636,11 +3765,11 @@ class ortho:
                 eff = gt.groupby(anti_col)["n_effective"].sum()
                 obs_by_anti = obs_sum.groupby(level=0).sum()
                 data_means = obs_by_anti / eff.replace(0, np.nan)
-                data_means.name = "mean(umis_mpra_bc)"
+                data_means.name = "mean(mpra_umis)"
 
             elif use_missing:
                 # Legacy path for CM orthos without fit_mode tag
-                obs_sum = _to_pandas(subset.groupby([anti, "rep_id"])["umis_mpra_bc"].sum())
+                obs_sum = _to_pandas(subset.groupby([anti, "rep_id"])["mpra_umis"].sum())
                 obs_sum.name = "obs_sum"
 
                 reps = cells_per_split_rep.loc[model_level] if model_level in cells_per_split_rep.index.get_level_values(0) else pd.Series(dtype="int64")
@@ -3657,13 +3786,13 @@ class ortho:
                 combined = pd.DataFrame({"obs_sum": obs_sum, "total_possible": total_possible}).fillna(0)
                 by_anti = combined.groupby(level=0).sum()
                 data_means = (by_anti["obs_sum"] / by_anti["total_possible"].replace(0, np.nan))
-                data_means.name = "mean(umis_mpra_bc)"
+                data_means.name = "mean(mpra_umis)"
 
             elif obs_totals is not None:
                 # Same denominator the reporter-informed fit used: nonzero
                 # observations plus the zeros the reporter licensed.
                 lvl = obs_totals[obs_totals[split] == str(model_level)]
-                obs_sum = _to_pandas(subset.groupby(anti)["umis_mpra_bc"].sum())
+                obs_sum = _to_pandas(subset.groupby(anti)["mpra_umis"].sum())
                 n_total = lvl.groupby(anti)["n_total"].sum()
                 n_total.index = n_total.index.astype(str)
                 obs_sum.index = obs_sum.index.astype(str)
@@ -3675,16 +3804,16 @@ class ortho:
                     # to it, whereas coarse mode's already counts every
                     # candidate observation, nonzero included.
                     n_nz = _to_pandas(
-                        subset[subset["umis_mpra_bc"] > 0].groupby(anti).size())
+                        subset[subset["mpra_umis"] > 0].groupby(anti).size())
                     n_nz.index = n_nz.index.astype(str)
                     n_total = n_total.add(
                         n_nz.reindex(n_total.index).fillna(0), fill_value=0)
                 data_means = obs_sum / n_total.reindex(obs_sum.index).replace(0, np.nan)
-                data_means.name = "mean(umis_mpra_bc)"
+                data_means.name = "mean(mpra_umis)"
             else:
-                data_means = subset.groupby(anti)["umis_mpra_bc"].agg("mean")
+                data_means = subset.groupby(anti)["mpra_umis"].agg("mean")
                 data_means = _to_pandas(data_means)
-                data_means.name = "mean(umis_mpra_bc)"
+                data_means.name = "mean(mpra_umis)"
 
             mu_estimates=params.nb[model_level].result()
 
@@ -3694,7 +3823,7 @@ class ortho:
             # NaN arises from anti-levels present in the model but absent
             # from the (post-ortho-filter) data means -- e.g. a CRE with
             # no observations in this cell type, or CM denominator = 0.
-            mu_clean = mu_summary.dropna(subset=["mu", "mean(umis_mpra_bc)"])
+            mu_clean = mu_summary.dropna(subset=["mu", "mean(mpra_umis)"])
             n_dropped = len(mu_summary) - len(mu_clean)
             if n_dropped > 0:
                 logger.info(
@@ -3704,7 +3833,7 @@ class ortho:
 
             # Fit regression
             try:
-                slope, intercept, r_value, p_value, std_err = linregress(mu_clean["mean(umis_mpra_bc)"], mu_clean["mu"])
+                slope, intercept, r_value, p_value, std_err = linregress(mu_clean["mean(mpra_umis)"], mu_clean["mu"])
 
                 #store regression info
                 ret={'success':True,
@@ -3826,9 +3955,9 @@ class ortho:
             anti_ct = anti_split("cell_type")
             anti_cr = anti_split("cre_id")
 
-            nz_cols_ct = ["cell_type", anti_ct, "rep_id", "umis_mpra_bc", "cell_bc"]
-            nz_cols_cr = ["cre_id", anti_cr, "rep_id", "umis_mpra_bc", "cell_bc"]
-            nz_pdf = raw[raw["umis_mpra_bc"] > 0].compute()
+            nz_cols_ct = ["cell_type", anti_ct, "rep_id", "mpra_umis", "cell_bc"]
+            nz_cols_cr = ["cre_id", anti_cr, "rep_id", "mpra_umis", "cell_bc"]
+            nz_pdf = raw[raw["mpra_umis"] > 0].compute()
             for col in ["cell_type", "cre_id", "rep_id"]:
                 if col in nz_pdf.columns:
                     nz_pdf[col] = nz_pdf[col].astype(str)
@@ -3839,7 +3968,7 @@ class ortho:
                         .drop_duplicates().compute())
             for df in [cell_map, mpra_map]:
                 for col in df.columns:
-                    if col != "umis_mpra_bc":
+                    if col != "mpra_umis":
                         df[col] = df[col].astype(str)
 
         elif fit_mode == "standard" and not has_matrices:
@@ -4256,7 +4385,7 @@ def get_cell_counts(client: Client, dat: pd.DataFrame, split: str):
         relevant_subset = relevant_subset.drop(columns=[split])
 
         anti=anti_split(split)
-        formula = Formula(f"umis_mpra_bc ~ C({anti}) + C(rep_id) - 1")
+        formula = Formula(f"mpra_umis ~ C({anti}) + C(rep_id) - 1")
         _, mat = formula.get_model_matrix(relevant_subset, output='pandas',ensure_full_rank=False)
         
         mat = mat.value_counts()
@@ -4389,7 +4518,7 @@ class simulation_batch:
         #s for simulated
         s=simulate_from_description(description_primordial).compute()
         s=undo_one_hot_encoding(s)
-        s=s.rename({'zinb_sample':'umis_mpra_bc'},axis=1)[['rep_id','cre_id','cell_type','umis_mpra_bc']]
+        s=s.rename({'zinb_sample':'mpra_umis'},axis=1)[['rep_id','cre_id','cell_type','mpra_umis']]
         
         ret=scMPRA_data()
         ret.flag_synthetic()
@@ -6386,7 +6515,7 @@ def _wald_make_bundle(hypotheses, models_or_counts, **kw):
 def _build_mwu_counts_dict(pdf):
     """
     Pure-pandas helper: takes a DataFrame with columns
-    [cell_type, cre_id, umis_mpra_bc] and returns the MWU bundle dict.
+    [cell_type, cre_id, mpra_umis] and returns the MWU bundle dict.
 
     Factored out so it can be called from both the normal Dask path
     (_mwu_make_bundle) and from inside Dask worker tasks where
@@ -6395,8 +6524,8 @@ def _build_mwu_counts_dict(pdf):
     pdf = pdf.copy()
     pdf["cell_type"] = pdf["cell_type"].astype(str)
     pdf["cre_id"] = pdf["cre_id"].astype(str)
-    pdf["umis_mpra_bc"] = pd.to_numeric(pdf["umis_mpra_bc"], errors="coerce").fillna(0).astype(float)
-    grouped = pdf.groupby(["cell_type", "cre_id"])["umis_mpra_bc"].apply(lambda s: s.to_numpy())
+    pdf["mpra_umis"] = pd.to_numeric(pdf["mpra_umis"], errors="coerce").fillna(0).astype(float)
+    grouped = pdf.groupby(["cell_type", "cre_id"])["mpra_umis"].apply(lambda s: s.to_numpy())
     return {"counts": {key: arr for key, arr in grouped.items()}}
 
 def _mwu_make_bundle(hypotheses, models_or_counts, **kw):
@@ -6423,12 +6552,12 @@ def _mwu_make_bundle(hypotheses, models_or_counts, **kw):
             sub = counts_obj.get_data(
                 include_missing=True,
                 context={"kind": "split_level", "split": "cell_type", "level": ct},
-                columns=["cell_type", "cre_id", "umis_mpra_bc"],
+                columns=["cell_type", "cre_id", "mpra_umis"],
             )
             pdf = _to_pandas_df(sub)
             counts_dict.update(_build_mwu_counts_dict(pdf)["counts"])
     else:
-        df = counts_obj.get_data(include_missing=False, columns=["cell_type", "cre_id", "umis_mpra_bc"])
+        df = counts_obj.get_data(include_missing=False, columns=["cell_type", "cre_id", "mpra_umis"])
         pdf = _to_pandas_df(df)
         return _build_mwu_counts_dict(pdf)
 
@@ -6447,7 +6576,7 @@ def _mwu_row_fn(
     comparison, and a descriptive fold change based on a log1p-mean summary.
 
     Assumes `bundle["counts"]` is a dict:
-        (cell_type, cre_id) -> np.ndarray of umis_mpra_bc
+        (cell_type, cre_id) -> np.ndarray of mpra_umis
     built once in _mwu_make_bundle.
     """
     counts = bundle["counts"]
@@ -6542,19 +6671,15 @@ def _counts_test_worker(tscription_future, path_scmpradat, path_output,
         different aggregation (e.g. pseudobulk).
     """
     if columns is None:
-        columns = ["cell_type", "cre_id", "umis_mpra_bc"]
+        columns = ["cell_type", "cre_id", "mpra_umis"]
     if bundle_fn is None:
         bundle_fn = _build_mwu_counts_dict
-    pdf = pd.read_parquet(
-        Path(path_scmpradat) / "data.parquet",
-        columns=columns,
-        engine="pyarrow",
-    )
+    pdf = _read_mpra_parquet(Path(path_scmpradat) / "data.parquet", columns)
     if not has_reporter:
-        pdf["umis_mpra_bc"] = pd.to_numeric(
-            pdf["umis_mpra_bc"], errors="coerce"
+        pdf["mpra_umis"] = pd.to_numeric(
+            pdf["mpra_umis"], errors="coerce"
         ).fillna(0)
-        pdf = pdf[pdf["umis_mpra_bc"] > 0]
+        pdf = pdf[pdf["mpra_umis"] > 0]
     bundle = bundle_fn(pdf)
     del pdf
 
@@ -6644,26 +6769,26 @@ def _build_pseudobulk_bundle(pdf):
     Aggregate per-integration counts to per-replicate means, then store
     as arrays keyed by (cell_type, cre_id).
 
-    Input pdf must have columns: cell_type, cre_id, rep_id, umis_mpra_bc.
+    Input pdf must have columns: cell_type, cre_id, rep_id, mpra_umis.
     Output bundle["pseudobulk"][(ct, cre)] = array of replicate-level means.
     """
     pdf = pdf.copy()
     pdf["cell_type"] = pdf["cell_type"].astype(str)
     pdf["cre_id"] = pdf["cre_id"].astype(str)
     pdf["rep_id"] = pdf["rep_id"].astype(str)
-    pdf["umis_mpra_bc"] = pd.to_numeric(
-        pdf["umis_mpra_bc"], errors="coerce"
+    pdf["mpra_umis"] = pd.to_numeric(
+        pdf["mpra_umis"], errors="coerce"
     ).fillna(0).astype(float)
 
     # Mean UMI per (cell_type, cre_id, rep_id)
     rep_means = (
-        pdf.groupby(["cell_type", "cre_id", "rep_id"])["umis_mpra_bc"]
+        pdf.groupby(["cell_type", "cre_id", "rep_id"])["mpra_umis"]
         .mean()
         .reset_index()
     )
     # Collect per (cell_type, cre_id) -> array of replicate means
     grouped = (
-        rep_means.groupby(["cell_type", "cre_id"])["umis_mpra_bc"]
+        rep_means.groupby(["cell_type", "cre_id"])["mpra_umis"]
         .apply(lambda s: s.to_numpy())
     )
     return {"pseudobulk": {key: arr for key, arr in grouped.items()}}
@@ -6803,7 +6928,7 @@ def _ks_row_fn(
 class _BootRepGroupCT:
     # one biological replicate worth of data
     cell_type:  np.ndarray              # per-row cell_type (string)
-    norm_umis:  np.ndarray              # per-row normalized_umis_mpra_bc (float)
+    norm_umis:  np.ndarray              # per-row mpra_umis_normalized (float)
     idx_by_cre_ct: dict[tuple[str,str], np.ndarray]   # (cre, ct) -> row indices
     idx_ctrl_by_ct: dict[str, np.ndarray]             # ct -> union of control rows
     n_int_by_cre_ct: dict[tuple[str,str], int]        # observed #integrations
@@ -6853,23 +6978,23 @@ def _bootstrap_build_bundle(
             "but bootstrap uses raw data semantics (no missing inflation)."
         )
 
-    df = counts.get_data(include_missing=False)
+    df = _canonical_mpra_columns(counts.get_data(include_missing=False))
     needed = {"cell_type", "cre_id", "rep_id", "cell_bc", "transfection_bc"}
     missing = sorted(needed - set(df.columns))
     if missing:
         raise ValueError(f"Counts table is missing required columns: {missing}")
 
     # ---- Choose metric column ----
-    if "normalized_umis_mpra_bc" in df.columns:
-        metric_col = "normalized_umis_mpra_bc"
-    elif "umis_mpra_bc" in df.columns:
-        metric_col = "umis_mpra_bc"
+    if "mpra_umis_normalized" in df.columns:
+        metric_col = "mpra_umis_normalized"
+    elif "mpra_umis" in df.columns:
+        metric_col = "mpra_umis"
         warnings.warn(
-            "[bootstrap_activity] Using raw 'umis_mpra_bc' because "
-            "'normalized_umis_mpra_bc' was not found."
+            "[bootstrap_activity] Using raw 'mpra_umis' because "
+            "'mpra_umis_normalized' was not found."
         )
     else:
-        raise ValueError("Neither 'normalized_umis_mpra_bc' nor 'umis_mpra_bc' present in counts table.")
+        raise ValueError("Neither 'mpra_umis_normalized' nor 'mpra_umis' present in counts table.")
 
     # ---- Controls from hypotheses ----
     hdf = hypotheses.to_dataframe()
@@ -8096,7 +8221,7 @@ class de_novo_simulation:
                                     compression="gzip")
 
             working=simulate_from_description(description)
-            working=working.rename(columns={'zinb_sample':'umis_mpra_bc'})
+            working=working.rename(columns={'zinb_sample':'mpra_umis'})
             scd=scMPRA_data()
 
             scd.data=working
@@ -8198,7 +8323,7 @@ class de_novo_simulation:
             When False, drop zero-count observations before testing.
         extra_columns : list[str] or None
             Additional parquet columns to read beyond the default three
-            (cell_type, cre_id, umis_mpra_bc).
+            (cell_type, cre_id, mpra_umis).
         bundle_fn : callable or None
             Function(pdf) -> dict. Defaults to _build_mwu_counts_dict.
         """
@@ -8218,7 +8343,7 @@ class de_novo_simulation:
             )
 
         tscription_futures = self.futures["transcription"].to_list()
-        base_cols = ["cell_type", "cre_id", "umis_mpra_bc"]
+        base_cols = ["cell_type", "cre_id", "mpra_umis"]
         if extra_columns:
             base_cols = list(dict.fromkeys(base_cols + list(extra_columns)))
 

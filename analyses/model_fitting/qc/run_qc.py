@@ -272,14 +272,14 @@ fig.suptitle(f"{ORTHO_NAME} -- mu vs mean(UMI) by cell type", fontsize=13)
 
 for i, (ct, qc_entry) in enumerate(by_cell.items()):
     ax = axes[i // ncols][i % ncols]
-    dat = qc_entry["dat"].dropna(subset=["mu", "mean(umis_mpra_bc)"])
+    dat = qc_entry["dat"].dropna(subset=["mu", "mean(mpra_umis)"])
     n_drop = len(qc_entry["dat"]) - len(dat)
-    ax.scatter(dat["mean(umis_mpra_bc)"], dat["mu"], alpha=0.4, s=8, color="steelblue")
+    ax.scatter(dat["mean(mpra_umis)"], dat["mu"], alpha=0.4, s=8, color="steelblue")
     r = qc_entry["r_value"]
     slope = qc_entry["slope"]
     intercept = qc_entry["intercept"]
     if r is not None and not np.isnan(r):
-        x = np.linspace(dat["mean(umis_mpra_bc)"].min(), dat["mean(umis_mpra_bc)"].max(), 100)
+        x = np.linspace(dat["mean(mpra_umis)"].min(), dat["mean(mpra_umis)"].max(), 100)
         ax.plot(x, slope * x + intercept, color="tomato", linewidth=1.5, label=f"r={r:.3f}")
         ax.legend(fontsize=9)
     subtitle = label(ct)
@@ -321,9 +321,9 @@ axes_flat = np.atleast_1d(axes).flatten()
 
 for i, (cre_id, qc_entry) in enumerate(to_plot):
     ax = axes_flat[i]
-    dat = qc_entry["dat"].dropna(subset=["mu", "mean(umis_mpra_bc)"])
+    dat = qc_entry["dat"].dropna(subset=["mu", "mean(mpra_umis)"])
     color = "tomato" if i < 20 else "steelblue"
-    ax.scatter(dat["mean(umis_mpra_bc)"], dat["mu"], alpha=0.7, s=20, color=color)
+    ax.scatter(dat["mean(mpra_umis)"], dat["mu"], alpha=0.7, s=20, color=color)
     r = qc_entry["r_value"]
     ax.set_title(f"r={r:.2f}", fontsize=7)
     ax.tick_params(labelsize=6)
@@ -375,7 +375,7 @@ else:
 # -- plot 6: r-value vs missing data (consider_missing datasets) ---------------
 has_missing = False
 for cre_id, qc_entry in by_cre.items():
-    if qc_entry["success"] and qc_entry["dat"]["mean(umis_mpra_bc)"].isna().any():
+    if qc_entry["success"] and qc_entry["dat"]["mean(mpra_umis)"].isna().any():
         has_missing = True
         break
 
@@ -388,7 +388,7 @@ if has_missing:
         if not qc_entry["success"] or qc_entry["r_value"] is None:
             continue
         dat = qc_entry["dat"]
-        n_nan = dat["mean(umis_mpra_bc)"].isna().sum()
+        n_nan = dat["mean(mpra_umis)"].isna().sum()
         r_vals_cre.append(qc_entry["r_value"])
         n_missing.append(n_nan)
 

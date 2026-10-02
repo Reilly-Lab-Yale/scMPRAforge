@@ -53,7 +53,7 @@ def phase_create(client):
     vals = []
     for key in primordial.by_cell_qc.keys():
         working = primordial.by_cell_qc[key]["dat"].reset_index().drop(
-            columns=["mean(umis_mpra_bc)"]
+            columns=["mean(mpra_umis)"]
         )
         working["cell_type"] = key
         vals.append(working)

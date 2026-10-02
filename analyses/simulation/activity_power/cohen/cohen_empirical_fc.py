@@ -52,7 +52,7 @@ def main():
 
     # Per (cell_type, cre_id): mean UMI across all observations
     mean_raw = (
-        df.groupby(["cell_type", "cre_id"])["umis_mpra_bc"]
+        df.groupby(["cell_type", "cre_id"])["mpra_umis"]
         .mean()
         .reset_index()
     )
