@@ -83,8 +83,9 @@ def main():
     ax.set_ylim(-0.95, 0.55)
     ax.set_xscale("log")
     ax.set_xlim(0.6, float(d.phi.max()) * 1.25)
-    ax.set_xlabel("Pearson dispersion $\\phi$ of the Poisson fit "
-                  "(1 = Poisson)", fontsize=9, color=INK)
+    label = {"shendure": "Lalanne et al."}[d.dataset.iloc[0]]
+    ax.set_xlabel(f"Pearson dispersion of the Poisson fit, {label}",
+                  fontsize=9, color=INK)
 
     med = float(d.phi.median())
     # The median is a summary, not one of the dots, so it gets a rule rather
@@ -101,10 +102,10 @@ def main():
     for side in ("top", "right", "left"):
         ax.spines[side].set_visible(False)
     ax.spines["bottom"].set_color("#cccccc")
-    ax.tick_params(colors=MUTED, labelsize=7, length=0)
+    ax.tick_params(colors=INK, labelsize=7, length=0)
     ax.annotate("Poisson null",
                 xy=(hi, 0.30), xytext=(1.35, 0.42),
-                fontsize=7, color=MUTED, va="center", ha="left",
+                fontsize=7, color=INK, va="center", ha="left",
                 arrowprops=dict(arrowstyle="-", color=MUTED, lw=0.8,
                                 shrinkA=0, shrinkB=2))
 

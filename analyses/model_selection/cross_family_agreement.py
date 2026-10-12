@@ -300,7 +300,7 @@ def manuscript_panel(rows):
         ax.vlines(p95[i], i - 0.16, i + 0.16, color=c, lw=0.9, zorder=4)
     for i, r in enumerate(canon):
         ax.text(p95[i] * 1.06, i, f"n={len(r['rel']):,}", va="center",
-                fontsize=7, color=MUTED)
+                fontsize=7, color=INK)
 
     ax.set_yticks(y)
     ax.set_yticklabels([DATASET_LABEL[r["dataset"]] for r in canon], fontsize=8)
@@ -315,7 +315,7 @@ def manuscript_panel(rows):
         ax.spines[side].set_visible(False)
     for side in ("left", "bottom"):
         ax.spines[side].set_color("#cccccc")
-    ax.tick_params(colors=MUTED, labelsize=7, length=0)
+    ax.tick_params(colors=INK, labelsize=7, length=0)
 
     fig.tight_layout()
     for ext in ("svg", "png"):

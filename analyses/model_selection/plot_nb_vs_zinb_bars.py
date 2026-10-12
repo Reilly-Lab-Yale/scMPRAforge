@@ -35,7 +35,7 @@ BASE = pathlib.Path(__file__).resolve().parent
 OUT = BASE / "output"
 TSV = BASE / "lrt_nb_vs_zinb_results.tsv"
 
-BLUE, ORANGE = "#0072b2", "#d55e00"     # Okabe-Ito (house palette)
+BLUE, ORANGE, GREEN = "#0072b2", "#d55e00", "#009e73"   # Okabe-Ito (house palette)
 INK, MUTED = "#1a1a1a", "#6b6b6b"
 
 # Canonical fit per dataset, then that dataset's other expansions. Canonical
@@ -64,6 +64,11 @@ LAYOUT = [
     ("seelig_cm",         "Yin: consider missing",        False),
 ]
 PANELS = [("by_cre", "by CRE"), ("by_cell_type", "by cell type")]
+# Same dataset colours as cross_family_agreement.py, so a dataset reads the
+# same across the panels of the figure. The bar's sign already says which
+# family is preferred; colour carries dataset instead.
+DATASET_COLOUR = {"shendure": BLUE, "cohen": ORANGE, "seelig": GREEN}
+GROUP_GAP = 0.6     # extra space between datasets, in bar widths
 
 
 def stars(p, n):
@@ -104,18 +109,26 @@ def main():
 
     for ax, (direction, title) in zip(axes, PANELS):
         sub = d[d.direction == direction]
-        x = np.arange(len(LAYOUT))
+        ds = [k.split("_")[0] for k, _, _ in LAYOUT]
+        assert set(ds) == set(DATASET_COLOUR), f"unexpected datasets {sorted(set(ds))}"
+        # Datasets must be contiguous in LAYOUT for the gaps to group them.
+        assert len(set(ds)) == sum(a != b for a, b in zip([None] + ds, ds)), \
+            "LAYOUT does not list each dataset contiguously"
+        x = np.arange(len(LAYOUT)) + GROUP_GAP * np.cumsum(
+            [0] + [a != b for a, b in zip(ds, ds[1:])])
         for i, (key, _, canonical) in enumerate(LAYOUT):
             v = sub[sub.dataset == key].d_nb.dropna().values
             assert v.size, f"no {direction} fits for {key}"
             mean, sem = v.mean(), (stats.sem(v) if v.size > 1 else 0.0)
             p = stats.ttest_1samp(v, 0).pvalue if v.size > 1 else np.nan
-            colour = BLUE if mean > 0 else ORANGE
-            ax.bar(i, mean, width=0.68, zorder=3,
+            colour = DATASET_COLOUR[ds[i]]
+            # alpha as in cross_family_agreement.py, so the dataset colours
+            # match across the figure.
+            ax.bar(x[i], mean, width=0.68, zorder=3, alpha=0.55,
                    color=colour if canonical else "white",
                    edgecolor=colour, linewidth=1.1,
                    hatch=None if canonical else "///")
-            ax.errorbar(i, mean, yerr=sem, color=INK, lw=0.9, capsize=2.5, zorder=4)
+            ax.errorbar(x[i], mean, yerr=sem, color=INK, lw=0.9, capsize=2.5, zorder=4)
             # Marks sit on the far side of the bar from zero. Scaling the bar
             # end outward works in both directions on a symlog axis because
             # multiplying a negative by >1 makes it more negative.
@@ -127,11 +140,11 @@ def main():
             sig = stars(p, v.size)
             strong = sig not in ("ns", "n/a")
             lift = 1.9 if i % 2 == 0 else 5.0
-            ax.text(i, (mean + np.sign(mean) * sem) * lift, sig, ha="center",
+            ax.text(x[i], (mean + np.sign(mean) * sem) * lift, sig, ha="center",
                     va="bottom" if mean > 0 else "top",
                     fontsize=9 if strong else 7,
                     fontweight="bold" if strong else "normal",
-                    color=INK if strong else MUTED)
+                    color=INK)
 
         ax.axhline(0, color=MUTED, lw=1.0, ls="--", zorder=2)
         ax.set_yscale("symlog", linthresh=1)
@@ -152,14 +165,14 @@ def main():
         for lab, y, va in (("NB\npreferred", 0.995, "top"),
                            ("ZINB\npreferred", 0.005, "bottom")):
             ax.text(1.02, y, lab, transform=ax.transAxes, ha="left", va=va,
-                    fontsize=7, fontweight="bold", color=MUTED, linespacing=1.2)
+                    fontsize=7, fontweight="bold", color=INK, linespacing=1.2)
         ax.grid(True, axis="y", color="#e6e6e6", lw=0.8, zorder=0)
         ax.set_axisbelow(True)
         for side in ("top", "right"):
             ax.spines[side].set_visible(False)
         for side in ("left", "bottom"):
             ax.spines[side].set_color("#cccccc")
-        ax.tick_params(colors=MUTED, labelsize=7, length=0)
+        ax.tick_params(colors=INK, labelsize=7, length=0)
         # Headroom for the significance marks, which sit outside the bar.
         # One line now that the sample sizes are gone, so far less than the
         # two-line annotation needed.
