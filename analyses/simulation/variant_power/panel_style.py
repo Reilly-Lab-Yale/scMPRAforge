@@ -230,7 +230,9 @@ def plot_panel(pivot, dataset, ct, n_cells, out_path):
     fig, ax = plt.subplots(figsize=(FIG_W, FIG_H))
     sns.heatmap(
         pivot, ax=ax, vmin=0, vmax=1, cmap=CMAP,
-        linewidths=0.4, linecolor="white", cbar=False,
+        # each tile outlined in its own colour: no grid lines, and no
+        # antialiasing seams between tiles in the vector output
+        linewidths=0.4, linecolor="face", cbar=False,
         xticklabels=False, yticklabels=False,
     )
 
