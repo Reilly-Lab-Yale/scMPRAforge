@@ -2,9 +2,11 @@
 Activity volcanoes for the three empirical datasets.
 
 Each CRE vs the flattened negative-control CRE ("reference"), within each cell
-type, tested by Mann-Whitney U. No filtering: TSVs are loaded as-is, so each
-dataset carries whatever zeros its assay design produced (shendure: oBC
-barcode-level, cohen: U6 CRE-coarse, seelig: none).
+type, tested by Mann-Whitney U. No filtering and no zero expansion: TSVs are
+loaded as-is and consider_missing stays off, so a dataset has zeros only if its
+TSV stores them (shendure: oBC barcode-level zeros; cohen and seelig: none,
+positive UMI counts only). The cohen U6 zeros live in the .scmpra directory
+and the fits, not in the TSV read here.
 
 Output layout, per dataset:
     output/<dataset>/<dataset>_activity_mwu.tsv        full results
