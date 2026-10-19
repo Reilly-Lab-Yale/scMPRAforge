@@ -1,0 +1,17 @@
+dataset	cell_type	cell_type_display	cells	n_baselines	power_activating	power_activating_max	power_repressing	power_repressing_max
+shendure	Cardiomyocytes	Cardiomyocytes	680	24	0.2896	0.5368	0.5105	0.8268
+shendure	Haematoendothelial	Haematoendothelial	1079	24	0.3788	0.6842	0.6129	0.9178
+shendure	NeuroectodermRostral	Neuroectoderm rostral	1757	24	0.5370	0.8127	0.7520	0.9980
+shendure	ExEndodermVisceral	ExE endoderm visceral	3238	24	0.5340	0.8342	0.7515	0.9894
+shendure	EpiblastPrimitiveStreak	Epiblast/prim. streak	3445	24	0.5000	0.8153	0.7350	0.9882
+shendure	ExEndodermParietal	ExE endoderm parietal	4644	24	0.5782	0.8649	0.7851	0.9990
+shendure	SurfaceEctoderm	Surface ectoderm	5168	24	0.6714	0.9293	0.8549	0.9994
+shendure	Mesoderm	Mesoderm	7427	24	0.7051	0.9567	0.8779	1.0000
+shendure	NeuroectodermBrain	Neuroectoderm brain	7750	24	0.7235	0.9704	0.8815	1.0000
+shendure	reference	Pluripotent	8201	24	0.6763	0.9593	0.8554	1.0000
+cohen	Bipolar	Bipolar	772	24	0.7870	0.8815	0.8910	0.9584
+cohen	Mueller Glia	Mueller glia	839	24	0.7904	0.8693	0.9041	0.9782
+cohen	Interneuron	Interneuron	1142	24	0.8329	0.9030	0.9170	0.9788
+cohen	reference	Rod	18633	24	0.9770	0.9900	0.9866	0.9998
+seelig	K562	K562	4478	24	0.2163	0.6449	0.3689	0.9260
+seelig	reference	HepG2	5858	24	0.2549	0.6453	0.4217	0.9364
