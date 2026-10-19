@@ -48,8 +48,8 @@ BOUNDS = {
 # The two series wear the same colour and marker as their reference lines on
 # the Fig 3B heatmaps, so the eye carries a line down from B to its series in C.
 SERIES = [
-    ("activating", kr.ACTIVATING_LOG2FC, kr._ACTIVATING_STYLE, "activating (+20%)"),
-    ("repressing", kr.REPRESSING_LOG2FC, kr._REPRESSING_STYLE, "repressing (-24%)"),
+    ("activating", kr.ACTIVATING_LOG2FC, kr._ACTIVATING_STYLE, "activating"),
+    ("repressing", kr.REPRESSING_LOG2FC, kr._REPRESSING_STYLE, "repressing"),
 ]
 
 # One x range for all three panels, so a cell count sits at the same place in
@@ -58,7 +58,8 @@ SERIES = [
 X_LIM = (450, 30000)
 X_TICKS = [1000, 3000, 10000]
 
-TOP_IN = 0.36
+# Room for the dataset title only.
+TOP_IN = 0.24
 FIG_H = TOP_IN + ps.PLOT_H_IN + ps.BOTTOM_IN
 
 
@@ -109,7 +110,7 @@ def plot(summary, dataset, legend):
                 color=style["color"], markeredgecolor="white",
                 markeredgewidth=0.5, zorder=3, label=label)
 
-    # Ring the cell type Fig 3B shows; the subtitle names it, since a label in
+    # Ring the cell type Fig 3B shows. The caption says which it is: a label in
     # the plot collides with the 80% rule or the neighbouring points.
     ref = summary[summary["cell_type"] == "reference"]
     assert len(ref) == 1, f"{dataset}: {len(ref)} reference rows"
@@ -127,7 +128,7 @@ def plot(summary, dataset, legend):
     ax.set_ylim(0, 1.04)
     ax.set_yticks([0, 0.5, 1])
     ax.set_yticklabels(["0", "0.5", "1"])
-    ax.set_xlabel("cells of that type", color=ps.INK, labelpad=2)
+    ax.set_xlabel("cells", color=ps.INK, labelpad=2)
     ax.set_ylabel("power", color=ps.INK, labelpad=2)
     ax.tick_params(colors=ps.INK, pad=2, length=2, width=0.6, which="both")
     for side in ("top", "right"):
@@ -136,15 +137,16 @@ def plot(summary, dataset, legend):
         ax.spines[side].set_linewidth(0.6)
 
     if legend:
-        ax.legend(loc="lower right", frameon=False, handlelength=1.6,
+        # Repressing first: its series sits above activating in every panel,
+        # so the key reads in the same top-to-bottom order as the plot.
+        handles, labels = ax.get_legend_handles_labels()
+        assert labels == [lab for *_, lab in SERIES], labels
+        ax.legend(handles[::-1], labels[::-1], loc="lower right", frameon=False, handlelength=1.6,
                   handletextpad=0.4, borderaxespad=0.1, labelspacing=0.3)
 
     x = ps.LEFT_IN / ps.FIG_W
     texts = [fig.text(x, 1 - ps.TITLE_TOP_IN / FIG_H, ps.DISPLAY_NAME[dataset],
-                      ha="left", va="center", fontsize=9, color=ps.INK),
-             fig.text(x, 1 - ps.SUBTITLE_TOP_IN / FIG_H,
-                      f"{len(summary)} cell types; ringed: {ref['cell_type_display']}",
-                      ha="left", va="center", fontsize=7, color=ps.MUTED)]
+                      ha="left", va="center", fontsize=9, color=ps.INK)]
     fig.subplots_adjust(left=ps.LEFT_IN / ps.FIG_W, right=1 - ps.RIGHT_IN / ps.FIG_W,
                         top=1 - TOP_IN / FIG_H, bottom=ps.BOTTOM_IN / FIG_H)
     ps._assert_fits(fig, texts)
