@@ -47,6 +47,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import scMPRAforge as scm
 import kircher_reference
+import panel_style
 from dask.distributed import Client, LocalCluster
 from dask_jobqueue import SLURMCluster
 
@@ -394,48 +395,12 @@ def phase_plot(client):
     plt.close(fig)
     print(f"Saved: {svg_path}", flush=True)
 
-    # --- Per-CT panels (matches the cohen/shendure replot output) ---
-    panel_dir = OUTPUT_DIR / "panels_mwu"
-    panel_dir.mkdir(exist_ok=True)
-    for ct in CELL_TYPES:
-        ct_display = "HepG2" if ct == "reference" else ct
-        ct_data = power_grid[power_grid["cell_type"] == ct]
-
-        pivot = ct_data.pivot_table(
-            index="log2_fc", columns="baseline_mu", values="power"
-        )
-        pivot = pivot.sort_index(ascending=False)
-        pivot = pivot[sorted(pivot.columns)]
-        cells_ct = scm.SEELIG_BOUNDS.cells_per_cell_type.get(ct, "?")
-
-        fig, ax = plt.subplots(figsize=(7, 5))
-        sns.heatmap(
-            pivot, ax=ax, vmin=0, vmax=1,
-            cmap="YlOrRd", linewidths=0.5, linecolor="white",
-            cbar_kws={"label": "Power", "shrink": 0.8},
-            xticklabels=[f"{x:.3f}" for x in sorted(pivot.columns)],
-            yticklabels=[f"{y:.2f}" for y in pivot.index],
-        )
-        drawn = kircher_reference.annotate(ax, pivot.index)
-        assert drawn == 2, (
-            f"{ct}: grid reaches only {drawn} of the two reference effects; "
-            f"fold-change range is {min(pivot.index)}-{max(pivot.index)}")
-        ax.set_title(
-            f"MWU pairwise power -- Seelig (no reporter) -- {ct_display}\n"
-            f"(n_cres={N_CRES}, cells={cells_ct}, alpha=0.05, "
-            f"{N_LIBRARY_REPS}x{N_SIMS} reps per grid cell)",
-            fontsize=10,
-        )
-        ax.set_xlabel("Baseline activity (mu)", fontsize=9)
-        ax.set_ylabel("|log2 FC|", fontsize=9)
-        ax.tick_params(labelsize=7)
-        plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
-        plt.tight_layout()
-        safe_ct = ct.replace("/", "_").replace(" ", "_")
-        out_path = panel_dir / f"seelig_pairwise_power_mwu_{safe_ct}.svg"
-        fig.savefig(out_path, format="svg", bbox_inches="tight")
-        plt.close(fig)
-        print(f"Saved: {out_path}", flush=True)
+    # --- Per-CT panels: the manuscript heatmaps, in the shared house style ---
+    panel_style.render_dataset(
+        power_df, "seelig",
+        scm.SEELIG_BOUNDS.cells_per_cell_type,
+        OUTPUT_DIR / "panels_mwu",
+    )
 
     # --- 50% power contour ---
     power_threshold = 0.50
