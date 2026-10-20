@@ -70,11 +70,13 @@ PANELS = [("by_cre", "by CRE"), ("by_cell_type", "by cell type")]
 DATASET_COLOUR = {"shendure": BLUE, "cohen": ORANGE, "seelig": GREEN}
 GROUP_GAP = 0.6     # extra space between datasets, in bar widths
 
-
-def stars(p, n):
-    if n < 2 or np.isnan(p):
-        return "n/a"
-    return "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "ns"
+# ZINB nests NB (pi -> 0), so at the optimum LL_ZINB >= LL_NB and the most NB
+# can be favoured by is ZINB's parameter penalty, 2q AIC for q extra
+# parameters. A fit whose ZINB likelihood ends below NB's has not reached that
+# optimum. Below SHORTFALL_LL that is the expected approach to the pi = 0
+# boundary, which the logit only reaches at -inf; above it, it is the
+# optimizer stopping short.
+SHORTFALL_LL = 1.0
 
 
 def load_delta_aic(path):
@@ -92,6 +94,12 @@ def load_delta_aic(path):
     d["d_nb"] = d.aic_zinb - d.aic_nb
     assert np.allclose(d.d_nb, -d.delta_aic, equal_nan=True), \
         "delta_aic is not AIC_NB - AIC_ZINB; the sign flip would be wrong"
+    assert (d.q > 0).all(), f"ZINB without extra parameters: {d[d.q <= 0].comparison.unique()}"
+    d["ceiling"] = 2 * d.q
+    d["short"] = (d.ll_zinb - d.ll_nb) < -SHORTFALL_LL
+    # What the comparison is at the optimum: ZINB credited with at least the
+    # nested NB's likelihood.
+    d["d_nb_capped"] = np.minimum(d.d_nb, d.ceiling)
     return d
 
 
@@ -117,10 +125,10 @@ def main():
         x = np.arange(len(LAYOUT)) + GROUP_GAP * np.cumsum(
             [0] + [a != b for a, b in zip(ds, ds[1:])])
         for i, (key, _, canonical) in enumerate(LAYOUT):
-            v = sub[sub.dataset == key].d_nb.dropna().values
+            v = sub[sub.dataset == key].d_nb_capped.dropna().values
             assert v.size, f"no {direction} fits for {key}"
+            ceiling = sub[sub.dataset == key].ceiling.iloc[0]
             mean, sem = v.mean(), (stats.sem(v) if v.size > 1 else 0.0)
-            p = stats.ttest_1samp(v, 0).pvalue if v.size > 1 else np.nan
             colour = DATASET_COLOUR[ds[i]]
             # alpha as in cross_family_agreement.py, so the dataset colours
             # match across the figure.
@@ -129,28 +137,16 @@ def main():
                    edgecolor=colour, linewidth=1.1,
                    hatch=None if canonical else "///")
             ax.errorbar(x[i], mean, yerr=sem, color=INK, lw=0.9, capsize=2.5, zorder=4)
-            # Marks sit on the far side of the bar from zero. Scaling the bar
-            # end outward works in both directions on a symlog axis because
-            # multiplying a negative by >1 makes it more negative.
-            # Significance carries the weight here: solid-vs-hatched encodes
-            # canonicity, and at equal type weight that fill contrast read as
-            # the panel's primary distinction when significance is the point.
-            # The sample sizes were dropped with the same aim -- two lines of
-            # grey text per bar outweighed the mark that mattered.
-            sig = stars(p, v.size)
-            strong = sig not in ("ns", "n/a")
-            lift = 1.9 if i % 2 == 0 else 5.0
-            ax.text(x[i], (mean + np.sign(mean) * sem) * lift, sig, ha="center",
-                    va="bottom" if mean > 0 else "top",
-                    fontsize=9 if strong else 7,
-                    fontweight="bold" if strong else "normal",
-                    color=INK)
+            # ZINB's parameter penalty: a bar at its tick means ZINB's extra
+            # parameters bought no likelihood.
+            ax.plot([x[i] - 0.42, x[i] + 0.42], [ceiling, ceiling], color=INK,
+                    lw=0.9, ls=(0, (2, 1.5)), zorder=5)
 
         ax.axhline(0, color=MUTED, lw=1.0, ls="--", zorder=2)
         ax.set_yscale("symlog", linthresh=1)
         ax.set_xticks(x)
-        # Canonical marked on the tick label, not above the bar, so it cannot
-        # be confused with the significance marks.
+        # Canonical marked on the tick label, where the reader looks for the
+        # name, rather than as a mark over the bar.
         ax.set_xticklabels([f"{lab} *" if c else lab for _, lab, c in LAYOUT],
                            fontsize=7, rotation=90, ha="center",
                            va="top")
@@ -173,11 +169,9 @@ def main():
         for side in ("left", "bottom"):
             ax.spines[side].set_color("#cccccc")
         ax.tick_params(colors=INK, labelsize=7, length=0)
-        # Headroom for the significance marks, which sit outside the bar.
-        # One line now that the sample sizes are gone, so far less than the
-        # two-line annotation needed.
+        # A little headroom so the penalty ticks clear the top of the axes.
         lo, hi = ax.get_ylim()
-        ax.set_ylim(lo * 9, hi * 4.5)
+        ax.set_ylim(lo * 1.5, hi * 2)
 
         # Which side means what, stated outright, so the panel can be read
         # without working back through the sign of an AIC difference. Placed
@@ -185,13 +179,15 @@ def main():
         # holds a bar, so an in-axes watermark would sit behind one. y=0 is
         # located in axes coordinates because on a symlog scale the zero line
         # is nowhere near the middle.
-    axes[0].set_ylabel(r"mean $\Delta$AIC (ZINB $-$ NB)", fontsize=8, color=INK)
+    axes[0].set_ylabel(r"mean $\Delta$AIC (ZINB $-$ NB), capped", fontsize=8, color=INK)
 
     handles = [
         plt.Rectangle((0, 0), 1, 1, facecolor=MUTED, edgecolor=MUTED,
                       label="* canonical fit (solid)"),
         plt.Rectangle((0, 0), 1, 1, facecolor="white", edgecolor=MUTED, hatch="///",
                       label="non-canonical expansion (hatched)"),
+        plt.Line2D([], [], color=INK, lw=0.9, ls=(0, (2, 1.5)),
+                   label="ZINB parameter penalty (2 per extra parameter)"),
     ]
     fig.legend(handles=handles, loc="lower center", ncol=2, frameon=False,
                fontsize=8, bbox_to_anchor=(0.5, -0.02))

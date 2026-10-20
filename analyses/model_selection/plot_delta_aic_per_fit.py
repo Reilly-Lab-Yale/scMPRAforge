@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from plot_nb_vs_zinb_bars import (LAYOUT, PANELS, TSV, BLUE, ORANGE, INK,
-                                  MUTED, load_delta_aic)
+                                  MUTED, SHORTFALL_LL, load_delta_aic)
 
 plt.rcParams["svg.fonttype"] = "none"
 
@@ -37,8 +37,12 @@ JITTER = 0.26
 RNG = np.random.default_rng(0)   # reproducible jitter
 
 
-def strip(ax, i, values):
-    """One category: the fits as jittered points, with median and IQR."""
+def strip(ax, i, values, short, ceiling):
+    """One category: the fits as jittered points, with median and IQR.
+
+    Fits whose ZINB ended short of the nested NB are drawn hollow, and a tick
+    at the ZINB penalty marks the most NB can be favoured by at the optimum.
+    """
     if not values.size:
         return
     # Alpha by count so a set of 1344 fits reads as density and a set of 4
@@ -46,7 +50,13 @@ def strip(ax, i, values):
     alpha = float(np.clip(30.0 / max(values.size, 1), 0.12, 0.85))
     x = i + RNG.uniform(-JITTER, JITTER, values.size)
     colors = np.where(values > 0, BLUE, ORANGE)
-    ax.scatter(x, values, s=7, c=colors, alpha=alpha, linewidths=0, zorder=2)
+    ax.scatter(x[~short], values[~short], s=7, c=colors[~short], alpha=alpha,
+               linewidths=0, zorder=2)
+    ax.scatter(x[short], values[short], s=9, facecolors="white",
+               edgecolors=colors[short], linewidths=0.6,
+               alpha=max(alpha, 0.5), zorder=2)
+    ax.plot([i - 0.38, i + 0.38], [ceiling, ceiling], color=INK, lw=0.9,
+            ls=(0, (2, 1.5)), zorder=5)
 
     # Narrower than the jittered cloud, so the median reads as a mark on the
     # points rather than as a bar of its own.
@@ -68,9 +78,11 @@ def main():
     for ax, (direction, title) in zip(axes, PANELS):
         sub = d[d.direction == direction]
         for i, (key, _, _) in enumerate(LAYOUT):
-            v = sub[sub.dataset == key].d_nb.dropna().values
+            s = sub[sub.dataset == key].dropna(subset=["d_nb"])
+            v = s.d_nb.values
             assert v.size, f"no {direction} fits for {key}"
-            strip(ax, i, v)
+            assert s.ceiling.nunique() == 1, f"{key}: mixed ZINB parameter counts"
+            strip(ax, i, v, s.short.values, s.ceiling.iloc[0])
             # Upright: seven counts across a half-width panel collide when set
             # horizontally, and n matters here -- two of these sets have n=2.
             ax.annotate(f"n={v.size}", (i, 1.0), xycoords=("data", "axes fraction"),
@@ -105,7 +117,16 @@ def main():
     fig.supylabel(r"$\Delta$AIC per fit (ZINB $-$ NB)", fontsize=8, color=INK,
                   x=0.005)
 
-    fig.tight_layout()
+    from matplotlib.lines import Line2D
+    fig.legend(handles=[
+        Line2D([], [], color=INK, lw=0.9, ls=(0, (2, 1.5)),
+               label="ZINB parameter penalty (2 per extra parameter)"),
+        Line2D([], [], ls="none", marker="o", ms=3.5, mfc="white", mec=MUTED,
+               mew=0.6, label=f"ZINB likelihood more than {SHORTFALL_LL:g} below NB"),
+    ], loc="lower center", ncol=2, frameon=False, fontsize=7,
+        bbox_to_anchor=(0.5, -0.04))
+
+    fig.tight_layout(rect=(0, 0.05, 1, 1))
     OUT.mkdir(exist_ok=True)
     for ext in ("svg", "png"):
         fig.savefig(OUT / f"delta_aic_per_fit.{ext}", dpi=200, bbox_inches="tight")
@@ -116,7 +137,8 @@ def main():
         for key, lab, canon in LAYOUT:
             v = sub[sub.dataset == key].d_nb.dropna()
             print(f"{direction:13s} {lab:32s} n={len(v):5d} "
-                  f"median={v.median():10.2f}  NB-favouring={100*(v>0).mean():5.1f}%")
+                  f"median={v.median():10.2f}  NB-favouring={100*(v>0).mean():5.1f}%  "
+                  f"short={int(sub[sub.dataset == key].short.sum())}")
     print(f"wrote {OUT/'delta_aic_per_fit.svg'} and .png")
 
 
