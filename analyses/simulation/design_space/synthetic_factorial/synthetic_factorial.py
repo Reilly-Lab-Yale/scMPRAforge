@@ -394,9 +394,9 @@ EMPIRICAL = {
 # gloss names the count rather than repeating the acronym.
 AXIS_DISPLAY = {
     "minP": "negative-control baseline",
-    "lib_alpha_nb": r"library skew ($\sigma$)",
-    "bcs_per_cre": "barcodes per element",
-    "n_cres": "elements",
+    "lib_alpha_nb": r"library dispersion ($\sigma_{\mathrm{lib}}$)",
+    "bcs_per_cre": "barcodes per CRE",
+    "n_cres": "CREs",
     "n_cells": "cells",
     "moi": "MOI (constructs per cell)",
     "activity_max_mult": "dynamic range (max / baseline)",
@@ -407,8 +407,8 @@ AXIS_DISPLAY = {
 # two that are still too long once the gloss is dropped are wrapped rather
 # than abbreviated further.
 AXIS_DISPLAY_SHORT = {
-    "lib_alpha_nb": "library skew",
-    "bcs_per_cre": "barcodes\nper element",
+    "lib_alpha_nb": "library\ndispersion",
+    "bcs_per_cre": "barcodes\nper CRE",
     "moi": "MOI",
     "minP": "neg.-control\nbaseline",
     "activity_max_mult": "dynamic\nrange",
