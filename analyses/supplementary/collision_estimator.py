@@ -118,8 +118,8 @@ def plot():
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     # Below the diagonal, the one region the points never reach. The dashed
-    # identity line is named in the caption.
-    ax.text(0.97, 0.04, f"slope {slope:.3f}\n$R^2$ = {r2:.5f}\n{len(d)} simulations",
+    # identity line and the number of simulations are in the caption.
+    ax.text(0.97, 0.04, f"slope {slope:.3f}\n$R^2$ = {r2:.5f}",
             transform=ax.transAxes, ha="right", va="bottom", fontsize=7,
             color=INK, linespacing=1.3)
     fig.savefig(SVG, format="svg")
