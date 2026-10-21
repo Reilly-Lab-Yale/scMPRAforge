@@ -72,7 +72,7 @@ CMAP = "YlOrRd"
 # Sized for a 0.32\textwidth inclusion in a 6.90 in text block.
 FIG_W = 2.21
 LEFT_IN, RIGHT_IN = 0.42, 0.09   # same as Fig 3A, so the columns align
-TOP_IN, BOTTOM_IN = 0.56, 0.34
+TOP_IN, BOTTOM_IN = 0.70, 0.34
 PLOT_H_IN = 0.95
 FIG_H = TOP_IN + PLOT_H_IN + BOTTOM_IN
 
@@ -85,6 +85,9 @@ FIG_H = TOP_IN + PLOT_H_IN + BOTTOM_IN
 CBAR_W_IN, CBAR_H_IN = 0.85, 0.05
 CBAR_TOP_IN = 0.345          # from the top of the figure
 TITLE_TOP_IN, SUBTITLE_TOP_IN = 0.115, 0.245
+# A key for the two reference lines, below the colourbar's tick labels: each
+# panel stands alone in the supplement, so each carries its own.
+KEY_TOP_IN = 0.60
 
 # Four x ticks out of 24 log-spaced baselines: enough to read the range the
 # axis spans, and the widest label (five characters at 7 pt) still clears
@@ -209,6 +212,20 @@ def _draw_title(fig, dataset, ct, n_cells):
     ]
 
 
+def _draw_key(fig):
+    """Name the two reference lines, in their own styles, under the colourbar."""
+    from matplotlib.lines import Line2D
+    handles = [Line2D([], [], color=st["color"], linestyle=st["linestyle"],
+                      marker=st["marker"], ms=3.0, lw=1.2, markeredgecolor="none")
+               for st in (kircher_reference._ACTIVATING_STYLE,
+                          kircher_reference._REPRESSING_STYLE)]
+    return fig.legend(handles, ["activating", "repressing"], loc="center left",
+                      bbox_to_anchor=(LEFT_IN / FIG_W - 0.01, 1 - KEY_TOP_IN / FIG_H),
+                      ncol=2, frameon=False, fontsize=7, handlelength=2.2,
+                      handletextpad=0.4, columnspacing=1.0, borderpad=0,
+                      borderaxespad=0, labelcolor=INK)
+
+
 def _assert_fits(fig, texts):
     """No title line may run past the right edge of the figure.
 
@@ -255,12 +272,16 @@ def plot_panel(pivot, dataset, ct, n_cells, out_path):
 
     _draw_colorbar(fig, ax.collections[0])
     texts = _draw_title(fig, dataset, ct, n_cells)
+    key = _draw_key(fig)
 
     fig.subplots_adjust(
         left=LEFT_IN / FIG_W, right=1 - RIGHT_IN / FIG_W,
         top=1 - TOP_IN / FIG_H, bottom=BOTTOM_IN / FIG_H,
     )
     _assert_fits(fig, texts)
+    fig.canvas.draw()
+    right = key.get_window_extent(fig.canvas.get_renderer()).x1 / fig.dpi
+    assert right <= FIG_W, f"reference-line key ends {right:.2f} in across a {FIG_W:.2f} in panel"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # No bbox_inches="tight". The three Fig 3B panels sit in one row with
     # their plot areas in line, and cropping each to its own contents would
