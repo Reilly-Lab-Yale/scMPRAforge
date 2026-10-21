@@ -407,7 +407,7 @@ def plot_overlay(curve, dataset, condition, out_path):
     else:
         ax.set_yticklabels([])
     if role in (None, "middle"):
-        ax.set_xlabel("fold change vs minP", color=INK, labelpad=1)
+        ax.set_xlabel("fold change vs neg. control", color=INK, labelpad=1)
 
     draw_title(fig, dataset, condition, color, role)
     fig.subplots_adjust(
