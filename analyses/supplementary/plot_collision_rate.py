@@ -56,7 +56,7 @@ def main():
     ax.bar(names, vals, color=BLUE, width=0.62)
 
     # One series, so no legend -- the axis label names the quantity.
-    ax.set_ylabel("collision rate\n(% of transfection events)", fontsize=8,
+    ax.set_ylabel("collision rate\n(% of delivery events)", fontsize=8,
                   color=INK)
     ax.set_ylim(0, max(vals) * 1.22)
     ax.bar_label(ax.containers[0], labels=[f"{v:.3f}%" for v in vals],

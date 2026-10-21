@@ -9,7 +9,7 @@ here and the point sizes are set to the house convention: 7pt annotations,
 import re
 
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 # 0.30 * 498.66pt, in inches at matplotlib's 72pt/in SVG unit.
 PANEL_W_IN = 149.60 / 72
@@ -24,6 +24,16 @@ RC = {
     "ytick.labelsize": 7,
     "legend.fontsize": 7,
 }
+
+
+XLABEL = {"transfection": "barcodes per cell", "library": "barcodes per CRE"}
+
+
+def _compact(v, _pos):
+    """Tick label for a count: 1500 -> 1.5k, 16000 -> 16k, 250 -> 250."""
+    if abs(v) >= 1000:
+        return f"{v / 1000:g}k"
+    return f"{v:g}"
 
 
 def save_model_plots(bounds, short, out_dir):
@@ -44,11 +54,14 @@ def save_model_plots(bounds, short, out_dir):
             fig.get_layout_engine().set(w_pad=0.01, h_pad=0.01)
             draw(ax=ax)
             ax.set_title(f"{dataset}\n{kind} model")
+            # Name what is counted rather than the plotting default "Count".
+            ax.set_xlabel(XLABEL[kind])
             # Counts run to six digits, which collides at the default tick
-            # density once the axis is only ~1.5in wide. Fewer ticks, and a
-            # shared power-of-ten offset once the labels get long.
+            # density once the axis is only ~1.5in wide. Fewer ticks, and
+            # thousands written as "k" on the tick itself: a shared
+            # power-of-ten offset sits on top of the axis label.
             ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
-            ax.ticklabel_format(axis="x", style="sci", scilimits=(0, 3))
+            ax.xaxis.set_major_formatter(FuncFormatter(_compact))
             # The legend labels are nearly as wide as the panel, so they go
             # under the axes rather than over the data. A constrained layout
             # reserves the room; tight_layout does not see an outside legend.
@@ -56,7 +69,9 @@ def save_model_plots(bounds, short, out_dir):
             ax.get_legend().remove()
             fig.legend(handles, labels, loc="outside lower center",
                        frameon=False, handlelength=1.2, handletextpad=0.4,
-                       borderpad=0.1, labelspacing=0.2)
+                       # Padding above the first entry, so its marker clears
+                       # the x-axis label the legend sits directly under.
+                       borderpad=0.7, labelspacing=0.2)
             path = out_dir / f"{short}_{kind}.svg"
             fig.savefig(str(path))
             plt.close(fig)
