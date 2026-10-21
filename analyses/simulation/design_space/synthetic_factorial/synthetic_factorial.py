@@ -1450,6 +1450,10 @@ def phase_plot(samples_with_power: pd.DataFrame, mode: str):
     # The "union" modes below draw once over the enclosing box instead.
     _pairwise_heatmaps(df, suffix=suffix, title_suffix="")
     _pairwise_heatmaps_all(df, suffix=suffix)
+    # The loop above writes the manuscript marginals filename too, as an
+    # exploratory variant (titled, one curve). Redraw the manuscript panel
+    # last so the file the manuscript syncs is always that one.
+    _plot_manuscript_marginals(df, suffix)
 
 
 def _heat_grid(df, a, b, nb=8):
